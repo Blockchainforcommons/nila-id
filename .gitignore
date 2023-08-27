@@ -1,0 +1,9 @@
+node_modules
+.dockerignore
+circuits
+copilot
+.env
+indexOLD.ts
+create.ts
+creds
+commands

@@ -1,0 +1,9 @@
+## WHAT HAS BEEN BUILD
+
+All VCs are onchain issued, due to the account abstraction - contract calls contract
+
+TODO:
+- build web3auth - call contract to issue and verify
+- experiment with onchain issuer
+https://0xpolygonid.github.io/tutorials/issuer/on-chain-issuer/on-chain-tutorial/#how-to-run-the-on-chain-issuer
+- experiment with onchain verifier?
