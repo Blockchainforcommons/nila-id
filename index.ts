@@ -12,11 +12,12 @@ import {
     IIdentityWallet,
   } from "@0xpolygonid/js-sdk";
 
-const qr = require('qr-image');
-const fs = require('fs');
-const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
-client.region = 'au1';
-client.edge = 'sydney';
+import { 
+    createStorageCredential,
+    createKYCAgeCredential, 
+    createStorageCredentialRequest, 
+    createKYCAgeCredentialRequest 
+  } from './credentials/storage';
 
 import {
     initInMemoryDataStorageAndWallets,
@@ -24,18 +25,20 @@ import {
     initProofService,
   } from "./walletSetup";
 
-import { Url } from 'url';
-import { Wallet } from 'ethers';
-
+const qr = require('qr-image');
+const fs = require('fs');
+var path = require('path');
 const rhsUrl = process.env.RHS_URL as string;
-var ddb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
+require('dotenv').config();
+
+var ddb = new AWS.DynamoDB({apiVersion: '2012-08-10', region: 'ap-south-1'});
+var s3 = new AWS.S3({apiVersion: '2006-03-01', region: 'ap-south-1'});
 
 AWS.config.update({
-    accessKeyId: process.env.accessKeyId,
-    secretAccessKey: process.env.secretAccessKey,
+    accessKeyId: process.env.ACCESSKEYID,
+    secretAccessKey: process.env.SECRETACCESSKEY,
     region: 'ap-south-1',
 });
-
 
 /* 
 API routers to issue off and on-chain credentials 
@@ -96,100 +99,6 @@ app.use(express.urlencoded({ extended: true })); // support encoded bodies
 app.use(express.static('schemas'))
 app.use(bodyParser.json());
 
-function createStorageCredential(did: core.DID, input: any) {
-  let date = new Date();
-  let schema;
-  let subject;
-
-  // paddy can be stored up to 10 years if the condition is 
-  if (typeof input.conditions === 'undefined' || input.conditions !== 'raw' ){
-      // set paddy as unprocessed (7 month expiration)
-      date.setMonth(date.getMonth() + 7);
-      schema = `${process.env.URI}/schemas/StoreCredentials/StorePaddyCredential.json`,
-      subject = {
-        id: did,
-        aadhar: input.Aadhar,
-        grade: input.store_grade,
-        quantity: input.store_amount,
-        variety: input.variety,
-        state: input.condition,
-      };
-  }
-  else {
-      // set pady as processed, 2 year expiration
-      date.setMonth(date.getMonth() + 24);
-      schema = `${process.env.URI}/schemas/StoreCredentials/StorePaddyCredential.json`,
-      subject = {
-        id: did,
-        aadhar: input.Aadhar,
-        grade: input.store_grade,
-        quantity: input.store_amount,
-        variety: input.variety,
-        state: input.condition,
-      };
-  }
-  const credentialRequest: CredentialRequest = {
-      credentialSchema: schema,
-      type: "StorageComplianceCredential",
-      credentialSubject: subject,
-      expiration: date.getTime(),
-      revocationOpts: {
-        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-        id: rhsUrl,
-      },
-  };
-  
-  return credentialRequest;
-  }
-
-function createKYCAgeCredentialRequest(
-    circuitId: CircuitId,
-    credentialRequest: CredentialRequest
-  ): ZeroKnowledgeProofRequest {
-    const proofReqSig: ZeroKnowledgeProofRequest = {
-      id: 1,
-      circuitId: CircuitId.AtomicQuerySigV2,
-      optional: false,
-      query: {
-        allowedIssuers: ["*"],
-        type: credentialRequest.type,
-        context:
-          "https://raw.githubusercontent.com/iden3/claim-schema-vocab/main/schemas/json-ld/kyc-v3.json-ld",
-        credentialSubject: {
-          documentType: {
-            $eq: 99,
-          },
-        },
-      },
-    };
-
-  const proofReqMtp: ZeroKnowledgeProofRequest = {
-    id: 1,
-    circuitId: CircuitId.AtomicQueryMTPV2,
-    optional: false,
-    query: {
-      allowedIssuers: ["*"],
-      type: credentialRequest.type,
-      context:
-        "https://raw.githubusercontent.com/iden3/claim-schema-vocab/main/schemas/json-ld/kyc-v3.json-ld",
-      credentialSubject: {
-        birthday: {
-          $lt: 20020101,
-        },
-      },
-    },
-  };
-
-  switch (circuitId) {
-    case CircuitId.AtomicQuerySigV2:
-      return proofReqSig;
-    case CircuitId.AtomicQueryMTPV2:
-      return proofReqMtp;
-    default:
-      return proofReqSig;
-  }
-}
-
 async function init(){
   let { dataStorage, credentialWallet, identityWallet } = await initInMemoryDataStorageAndWallets();
     const circuitStorage = await initCircuitStorage();
@@ -199,12 +108,14 @@ async function init(){
         dataStorage.states,
         circuitStorage
     );
+    
     return {identityWallet,credentialWallet,dataStorage,proofService,circuitStorage}
 }
 
 app.post('/IssueStorage', async (req: Request, res: Response) => {
 
-    // API called in WABA flow handler.Store
+    // API CALLED IN WABA FLOW: handler.Store
+    
     // parse req
     const input = req.body
     console.log(input)
@@ -221,14 +132,12 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       ProjectionExpression: 'SK,BabyJubJub,BusinessName'
     }
     var wallet_seed = await ddb.getItem(params).promise()
-    console.log('wallet_bjj', wallet_seed.Item.BabyJubJub.S)
 
     // generate the babyjubjub key from private key
     // TODO: FIND SOLUTION IN JS, TAKE PRESET
 
     let utf8Encode = new TextEncoder();
     const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
-    console.log('seedPhraseUser key', seedPhraseUser) 
 
     const { did: issuerDID, credential: issuerAuthBJJCredential } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
@@ -240,9 +149,10 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
         id: 'https://rhs-staging.polygonid.me'
         }
     });
-
+    
     // prepare and issue credential
-    const credentialRequest = createStorageCredential(userDID,input);
+    const credentialRequest : any = createStorageCredential(userDID,input);
+    console.log('issdid', credentialRequest)
     const credential = await identityWallet.issueCredential(
         issuerDID,
         credentialRequest
@@ -251,18 +161,23 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     await dataStorage.credential.saveCredential(credential);
 
     // storagecreds are MTVP, so have to be published onchain
+    await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
+
+    // restore issuer merkle tree
+    // TODO, restore tree
+
+    // make sure to add credentials to up-to-date merkle tree
     const add = await identityWallet.addCredentialsToMerkleTree(
       [credential],
-      issuerDID
+      issuerDID,
     );
 
     // publish state
-    await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
-  
     const ethSigner = new ethers.Wallet(
       wallet_seed.Item.SK.S,
       (dataStorage.states as EthStateStorage).provider
     );
+
     const txId = await proofService.transitState(
       issuerDID,
       add.oldTreeState,
@@ -270,15 +185,26 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       dataStorage.states,
       ethSigner
     );
-
+    console.log(txId);
+    
     // send credential to user to generate proof
-    client.messages
+    console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
+    const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
+    client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
+      .executions
       .create({
-        body: `Congratulations. ${wallet_seed.Item.BusinessName.S} has created your ${input.ct} storage certificates.\n\n* Quantity: ${input.store_amount}\n* Grade: ${input.store_grade}\nType *confirm* to generate the proof and sell your produce.`,
         to: `whatsapp:${input.user_phone}`,
         from:"whatsapp:+13478481380",
-      })
-      .then((message: any) => console.log(message.sid));
+        parameters: JSON.stringify({
+          'id': '300',
+          'ct': input.ct,
+          'quantity': input.store_amount,
+          'grade': input.store_grade,
+          'businessName': wallet_seed.Item.BusinessName.S,
+          'credentialRequest': '',//credentialRequest, 
+          'issuerDID': issuerDID,
+      })})
+      .then((execution: any) => console.log(execution.sid));
 
     // return success
     return res.send('success')
@@ -286,12 +212,15 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
 });
 
 app.post('/ProofStorage', async (req: Request, res: Response) => {
-    // API called in WABA flow sales.GenerateProof
+
+    // API CALLED IN WABA FLOW: handler.Proof
+
+
     // receive input (device id, credentialRequest, userDID)
     const input = req.body
-    console.log(input)
     const phone = input.phone.split(':')[1]
-    const issuerDID = input.did
+    const issuerDID = input.issuerDiD // postman: string, WA: core.did
+    const credentialRequest = input.credentialRequest
 
     // initialize wallets
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
@@ -303,11 +232,9 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
       ProjectionExpression: 'SK,BabyJubJub'
     }
     var wallet_seed = await ddb.getItem(params).promise()
-    console.log('wallet_bjj', wallet_seed.Item.BabyJubJub.S)
 
     let utf8Encode = new TextEncoder();
     const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
-    console.log('seedPhraseUser key', seedPhraseUser) 
 
     const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
@@ -321,9 +248,9 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     });
 
     // create standardized proofrequests
-    // get request for proof
-    const proofReqSig: ZeroKnowledgeProofRequest = createKYCAgeCredentialRequest(
-      CircuitId.AtomicQueryMTPV2,
+    // get request for MERKLE TREE proof
+    const proofReqSig: ZeroKnowledgeProofRequest = createStorageCredentialRequest(
+      // CircuitId.AtomicQueryMTPV2,
       credentialRequest
     );
 
@@ -348,17 +275,37 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     //  - standard set of queries are available.
 
     // create the qr codes and return
-    var addr = 'https://fbae-2a02-a46a-7ff7-1-7109-a94f-21e6-e7d6.ngrok-free.app'
+    var addr = process.env.URI
     var zkProof = `${addr}/verify?text=${proof_pub_json}` 
     console.log('zkproof', zkProof)
     var code = qr.image(zkProof, { type: 'svg' });
     code.pipe(fs.createWriteStream('qr.svg'));
 
-    // return qr image
-    res.send('success')
-});
-  
+    // store image on S3 bucket
+    var filename = 'qr.svg';
+    await s3.upload({
+      Bucket: process.env.S3BUCKET, 
+      Key: filename, 
+      Body: fs.readFileSync('qr.svg'),
+      ACL: 'public-read',
+      ContentType: 'image/jpg',
+    }).promise()
 
+    // return url of QR image
+    res.send(JSON.stringify({
+      'url': `https://${process.env.S3BUCKET}.s3.ap-south-1.amazonaws.com/${filename}`
+    }))
+});
+
+app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
+
+  // API CALLED IN WABA FLOW: handler.Proof
+
+
+});
+
+  
+    /*
     // API to generate proof 
     //const userDID = core.DID.parse(req.body.user_DID)
 
@@ -400,162 +347,6 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     CircuitId.AtomicQuerySigV2
     );
       console.log("valid: ", sigProofOk);
-
-
-app.get('/', async (req: Request, res: Response) => {
-
-    console.log("=============== generate proofs ===============");
-
-    async function createIdentity(identityWallet: IIdentityWallet) {
-        const { did, credential } = await identityWallet.createIdentity({
-          method: core.DidMethod.Iden3,
-          blockchain: core.Blockchain.Polygon,
-          networkId: core.NetworkId.Mumbai,
-          revocationOpts: {
-            type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-            id: rhsUrl,
-          },
-        });
-      
-        return {
-          did,
-          credential,
-        };
-    }
-        
-    let { dataStorage, credentialWallet, identityWallet } =
-        await initInMemoryDataStorageAndWallets();
-
-    const circuitStorage = await initCircuitStorage();
-    const proofService = await initProofService(
-        identityWallet,
-        credentialWallet,
-        dataStorage.states,
-        circuitStorage
-    );
-
-    const { did: userDID, credential: authBJJCredentialUser } =
-        await createIdentity(identityWallet);
-
-    console.log("=============== user did ===============");
-    console.log(userDID.string());
-
-    const { did: issuerDID, credential: issuerAuthBJJCredential } =
-        await createIdentity(identityWallet);
-
-    const credentialRequest = createStorageCredential(userDID,'input');
-
-    const credential = await identityWallet.issueCredential(
-        issuerDID,
-        credentialRequest
-    );
-    await dataStorage.credential.saveCredential(credential);
-
-    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
-    console.log(credential)
-
-    const proofReqSig: ZeroKnowledgeProofRequest = createKYCAgeCredentialRequest(
-        CircuitId.AtomicQuerySigV2,
-        credentialRequest
-      );
-    
-    const { proof, pub_signals } = await proofService.generateProof(
-    proofReqSig,
-    userDID
-    );
-
-    console.log('proof', proof)
-    console.log('pub_signals', pub_signals)
-
-    const proof_pub_json = JSON.stringify({
-        'proof': proof,
-        'pubsignals': pub_signals,
-    })
-    console.log('proof_pub_json', proof_pub_json)
-
-    // link that let verifiers know: 
-    //  - issuer
-    //  - query and criteria
-    //  - standard set of queries are available.
-    var addr = 'https://fbae-2a02-a46a-7ff7-1-7109-a94f-21e6-e7d6.ngrok-free.app'
-    var zkProof = `${addr}/verify?text=${proof_pub_json}` 
-    console.log('zkproof', zkProof)
-    var code = qr.image(zkProof, { type: 'svg' });
-    code.pipe(fs.createWriteStream('qr.svg'));
-    /*
-
-    const walletKey = process.env.WALLET_KEY as string;
-
-    // Q = if key is not PK but social login, how to initiate identity..
-    
-        FLOW:
-            - ISSUER CREATES IDENTITY WITH KEY
-            - ISSUER ISSUES CREDENTIAL USING USER DID
-            - USER CLAIMS CREDENTIAL
-            - USER PROOFS CREDENTIAL
-            - VERIFIER RECEIVES ZNP OF CREDENTIAL - TRUE OR FALSE, OR ATTRIBUTE
-            - 
-
-
-    // initiate identity DID (changes each call)
-    //console.log('req', req)
-
-    // create identity or instantiate identity for user
-
-    // example DID (android app)
-    //let userDID = "did:polygonid:polygon:mumbai:2qKoN6262C6zARF7tDVTtxKhCC3eK3FRHjeTQ9Xm6i"
-    
-    let { did: userDID } = await identityCreation();
-    // create identity or instantiate identity for issuer
-    let { did: issuerDID,identityWallet,credentialWallet,dataStorage } = await identityCreation();
-    
-    // issue credential
-    let {credential,credentialRequest} = await issueCredential(userDID.string(),issuerDID,identityWallet,dataStorage);
-
-    // publish the credentials onchain. Using the signer key derived from web3 auth social login!!!
-    let {proofService,txId} = await publishState(dataStorage,identityWallet,walletKey,issuerDID,credentialWallet,credential)
-
-    console.log('ask for proof::::::')
-    // generate proof
-    let {proof,vp} = await genProof(proofService,credentialRequest,userDID.string())
-
-    console.log('result', proof)    
-    console.log('vp', vp)
-    console.log(' userDID:core.DID', userDID)
-
     */
-    res.send('Express app works!')
-});
-
-app.get('/verify', async (req: Request, res: Response) => {
-    console.log(req.query);
-
-    let { dataStorage, credentialWallet, identityWallet } =
-        await initInMemoryDataStorageAndWallets();
-
-    const circuitStorage = await initCircuitStorage();
-    const proofService = await initProofService(
-        identityWallet,
-        credentialWallet,
-        dataStorage.states,
-        circuitStorage
-    );
-    //const sigProofOk = await proofService.verifyProof(
-    //{ proof, pub_signals },
-    //CircuitId.AtomicQuerySigV2
-    //);
-
-    //res.send(`RESULT valid: ${sigProofOk}`)
-
-
-    // flow to verify a generated proof through a QR scan 
-    // Nila users publish and share QRs to sell there produce. To speed up the sales process, we use
-    // a standard set of generated proofs. Interested buyers can call this API to verify the proof
-    // without the need of a app.
-    // !! this is simply an example of a verifier. In production, this should be another entity.
-
-
-
-})
 
 app.listen(port, () => console.info(`Express listening on port ${port}!`));
