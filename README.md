@@ -20,20 +20,6 @@ Nila is registered as Aadhava Agri Services Private Limited
 
 Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
 
-## App front examples
-
-#### * origin certificate request and storage qr
-
-![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png)
-
-#### * storage issue request
-
-![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Issue_storage_certificate.png)
-
-#### * storage proof request
-
-![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Proof_storage_certificate.png)
-
 ## Requirements
 1. NodeJS => 18.x
 2. Python => 3.9
@@ -81,20 +67,27 @@ AUTH_TOKEN=<TWILLIO_AUTH_TOKEN>
 URI=<NODEJS_SERVER_URI>
 ```
 
-## Invoke a flow
+## Invoke a flow * App front-end examples
 
 ### registration is mandatory
 1. 'Say hi :wave:' to the WABA phone number you registered with.
 2. Register your property using the prop flow.
 
-### for the nila-id ORIGIN certification
+
+#### * origin certificate request and storage qr
+
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png)
+
 3. Type 'Sell' to invoke the origin certification 
 4. if a cultivation and a harvest event are detected, the origin certificate and proof QR will be send to the registered WhatsApp user. 
 5. the proof QR can be shared, send to anyone interested.
 6. Answer the storage questions.
 7. if in store or will be stored, let the storage manager scan the storage QR.
 
-### for nila-id STORAGE certification
+### * nila-id STORAGE certification
+
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Issue_storage_certificate.png)
+
 
 -- storage manager flow:
 
@@ -103,12 +96,16 @@ URI=<NODEJS_SERVER_URI>
 10. enter grade
 11. receive the updated storage account root id.
 
+#### * storage proof request
+
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Proof_storage_certificate.png)
+
 -- user flow: 
 
 12. receive result of scan, verify quantity and grade
 13. if confirmed, the storage certificate and proof QR will be send to the registered WhatsApp user
 
-## Proof limitations
+## Proof queries
 
 Proof can only be generated for 2 query types: 
 
