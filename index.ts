@@ -254,16 +254,10 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // create standardized proofrequests
     // get request for MERKLE TREE proof
-    const proofReqSig: ZeroKnowledgeProofRequest = createStorageCredentialRequest(
-      // CircuitId.AtomicQueryMTPV2,
-      credentialRequest
-    );
+    const proofReqSig: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
 
     // generate proof
-    const { proof, pub_signals } = await proofService.generateProof(
-    proofReqSig,
-    userDID
-    );
+    const { proof, pub_signals } = await proofService.generateProof(proofReqSig,userDID);
 
     console.log('proof', proof)
     console.log('pub_signals', pub_signals)
@@ -307,34 +301,51 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
   let input = req.body
   let pk = input.pk
   let phone = input.phone.split(':')[1]
-  console.log('SISFJWOIDFJOSD', phone)
+  console.log('user phone', phone)
 
- // recover wallet seed (DEMO: Users have not been transferred to Polygon )
- var params = {
-   TableName: 'polygon_aes',
-   Key: { 'phoneNumber': {'S': phone} },
-   ProjectionExpression: 'SK,BabyJubJub'
- }
- var wallet_seed = await ddb.getItem(params).promise()
+  // initialize wallets
+  let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
 
-// initiate provider (use superlib of ethers because of ease to fetch metadata)
- const provider = new Alchemy({
-    apiKey: process.env.PROVIDER_API_KEY,
-    network: Network.maticmum, // Replace with your network.
+  // recover wallet seed (DEMO: Users have not been transferred to Polygon )
+  var params = {
+    TableName: 'polygon_aes',
+    Key: { 'phoneNumber': {'S': phone} },
+    ProjectionExpression: 'SK,BabyJubJub'
+  }
+  var wallet_seed = await ddb.getItem(params).promise()
 
- });
- // find recent token deposits on user address from token minter
- const blocknmb = await provider.core.getBlockNumber()
- console.log('blocknmb', blocknmb)
- const histblock = blocknmb - ((60*60*24*21) / 12.06) // doesnt have to be precise, current block minus estimated blocks by blocktime
+  // recover wallet seed (DEMO: Users have not been transferred to Polygon )
+  let utf8Encode = new TextEncoder();
+  const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
 
- const txs = await provider.core.getAssetTransfers({
-  fromBlock: '0x' + Math.round(histblock).toString(16).toUpperCase(), // find block of about 3 weeks ago.
-  fromAddress: process.env.FIELD_ACTIVITY_MINT_CONTRACT,
-  toAddress: pk,
-  excludeZeroValue: false,
-  category: ["erc20"],
-});
+  const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
+      method: core.DidMethod.Iden3,
+      blockchain: core.Blockchain.Polygon,
+      networkId: core.NetworkId.Mumbai,
+      seed: seedPhraseUser,
+      revocationOpts: {
+      type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+      id: 'https://rhs-staging.polygonid.me'
+      }
+  });
+  // initiate provider (use superlib of ethers because of ease to fetch metadata)
+  const provider = new Alchemy({
+      apiKey: process.env.PROVIDER_API_KEY,
+      network: Network.maticmum, // Replace with your network.
+
+  });
+  // find recent token deposits on user address from token minter
+  const blocknmb = await provider.core.getBlockNumber()
+  console.log('blocknmb', blocknmb)
+  const histblock = blocknmb - ((60*60*24*21) / 12.06) // doesnt have to be precise, current block minus estimated blocks by blocktime
+
+  const txs = await provider.core.getAssetTransfers({
+    fromBlock: '0x' + Math.round(histblock).toString(16).toUpperCase(), // find block of about 3 weeks ago.
+    fromAddress: process.env.FIELD_ACTIVITY_MINT_CONTRACT,
+    toAddress: pk,
+    excludeZeroValue: false,
+    category: ["erc20"],
+  });
 
  // check for recent tx from our crop token mint contact ( not sufficient - can also be seperate cultivations!!)
   if (txs.transfers.length != 0){
@@ -354,7 +365,30 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
   // propose contract to issue credentialRequest
   const credentialRequest : any = createOriginCredential(userDID,input,md);
 
-  // generate proof 
+  // request origin certificate from onchain issuer 
+  const contract = require("https://github.com/iden3/contracts/blob/master/contracts/test-helpers/IdentityExample.sol"); // load contract
+  const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
+  const OnchainIssuer = new ethers.Contract('0x134B1BE34911E39A8397ec6289782989729807a4', contract.abi, signer);
+
+
+
+
+
+
+
+
+
+  // generate proof
+  const { proof, pub_signals } = await proofService.generateProof(credentialRequest,userDID);
+
+  console.log('proof', proof)
+  console.log('pub_signals', pub_signals)
+
+  const proof_pub_json = JSON.stringify({
+      'proof': proof,
+      'pubsignals': pub_signals,
+  })
+  console.log('proof_pub_json', proof_pub_json)
 
   // return origin proof QR and storage request QR
  }

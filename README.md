@@ -64,6 +64,7 @@ URI=<NODEJS_SERVER_URI>
 1. 'Say hi :wave:' to the WABA phone number you registered with.
 2. Register your property using the prop flow.
 
+::UNTESTED::
 # for the nila-id ORIGIN certification
 3. Type 'Sell' to invoke the origin certification 
 4. if a cultivation and a harvest event are detected, the origin certificate and proof QR will be send to the registered WhatsApp user. 
