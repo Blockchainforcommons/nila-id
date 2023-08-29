@@ -72,12 +72,16 @@ URI=<NODEJS_SERVER_URI>
 7. if in store or will be stored, let the storage manager scan the storage QR.
 
 ### for nila-id STORAGE certification
+
 -- storage manager flow:
+
 8. Scan the storage QR 
 9. enter quantity
 10. enter grade
 11. receive the updated storage account root id.
+
 -- user flow: 
+
 12. receive result of scan, verify quantity and grade
 13. if confirmed, the storage certificate and proof QR will be send to the registered WhatsApp user
 
