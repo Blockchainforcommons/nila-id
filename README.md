@@ -10,6 +10,7 @@ There are three main components in this application:
 
 1. The chatbot flows using a custom made json-flow builder for front-end communication
 2. The nodeJS server providing 3 APIs to request credentials and generate proof
+3. additional Python Lambda functions to run the chatbotflow (webhooks,userKYC,etcetera.)
 
 ## Requirements
 1. NodeJS => 18.x
@@ -24,7 +25,7 @@ There are three main components in this application:
 7. a verified META WhatsApp for business (WABA)
 8. a twillio account to launch the custom JSON flow
 9. AWS account for S3 and dynamoDB (you can choose other providers at your convenience)
-10. a phone number at your disposal with a allowed country prefix; e.g +1 
+10. a phone number at your disposal with an allowed country prefix; e.g +1 
 
 ## environment variables:
 
@@ -91,14 +92,16 @@ Proof can only be generated for 2 query types:
 
     Origin:
     - Quantity of Type ( 
-        return crop type
+        return crop type (signals a crop of this type has been cultivated by the userDID)
     )
     Storage:
     - Stored_at_issuer_location (
-        return user aadhar number and valid or not valid
+        return user aadhar (signals user produce is stored in issuer storage.)
     )
 
-In the future options will be given to generate additional proofs. See the Dorahack BUIDL description for more credentials.
+In the future options will be given to generate additional proofs. See the Dorahack BUIDL description for more possible credentials.
+
+Support for cross and mixing proofs, such as 'crop_type on location x' or 'aadhar with x amount' is wanted.
 
 ## Authentication
 
