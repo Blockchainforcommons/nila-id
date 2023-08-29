@@ -18,7 +18,7 @@ function ifPaddy(did: core.DID, input: any){
   if (typeof input.conditions === 'undefined' || input.conditions !== 'raw' ){
     // set paddy as unprocessed (7 month expiration)
     date.setMonth(date.getMonth() + 7);
-    schema = 'https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/StoreCredentials/StorePaddyCredential.json',
+    schema = 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/schemas/StoreCredentials/StorePaddyCredential.json',
     subject = {
       id: did,
       //aadhar: '', //input.Aadhar,
@@ -31,7 +31,7 @@ function ifPaddy(did: core.DID, input: any){
   else {
     // set paddy as processed, 2 year expiration
     date.setMonth(date.getMonth() + 24);
-    schema = 'https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/StoreCredentials/StorePaddyCredential.json',
+    schema = 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/schemas/StoreCredentials/StorePaddyCredential.json',
     subject = {
       id: did,
       //aadhar: '', //input.Aadhar,
@@ -67,7 +67,7 @@ export function createStorageCredentialRequest(
 ): ZeroKnowledgeProofRequest {
 
 const Ct = ct[0].toUpperCase() + ct.slice(1) // make sure first letter is uppercase
-
+console.log('CT', Ct)
 const proofReqMtp: ZeroKnowledgeProofRequest = {
   id: 1693297968,
   circuitId: CircuitId.AtomicQueryMTPV2,
@@ -75,7 +75,7 @@ const proofReqMtp: ZeroKnowledgeProofRequest = {
   query: {
     allowedIssuers: [issuerDID],
     type: credentialRequest.type,
-    context: `https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/StoreCredentials/Store${Ct}Credential.jsonId`,
+    context: `https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/schemas/StoreCredentials/Store${Ct}Credential.jsonld`,
     credentialSubject: {
       quantity: {},
     },

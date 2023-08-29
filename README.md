@@ -2,7 +2,7 @@
 
 This is a experimental implementation of polygon account abstraction and polygon ID for the Polygon DevX EMEA Hackathon X, performed in august 2023 by the Nila team based in Amsterdam, the Netherlands.
 
-## Goal
+# Goal
 
 The challenge is too build an off-chain and on-chain issuer and user wallet that can be solely operated from a WhatsApp environment with a WABA account. To reach our Nila customers, web3 UX is too difficult to use. Please read the attached presentation or Buildl description for more business challenge related information.
 
@@ -12,9 +12,19 @@ There are three main components in this application:
 2. The nodeJS server providing 3 APIs to request credentials and generate proof
 3. additional Python Lambda functions to run the chatbotflow (webhooks,userKYC,etcetera.)
 
-## Languages
+### Languages
 
 Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
+
+### App front examples
+
+# origin certificate request and storage qr
+
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png)
+
+# storage certificate request
+
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Issue_storage_certificate.png)
 
 ## Requirements
 1. NodeJS => 18.x
@@ -149,8 +159,6 @@ Storage Credentials are not stored locally in this version of nila-id. Storage c
 4. Purchase a phone number and link it to the Whatsapp Messaging
 5. Create a AWS account 
 9. You are ready to go!
-4. Pu
-
 
 ## How to run the Nila-JS-Node:
 1. Clone this repository:

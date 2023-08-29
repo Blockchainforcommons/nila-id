@@ -27,10 +27,11 @@ import {
   } from "./walletSetup";
 
 const qr = require('qr-image');
+const QR = require('qrcode')
+
 const fs = require('fs');
 var path = require('path');
 const { Network, Alchemy } = require("alchemy-sdk");
-
 const rhsUrl = process.env.RHS_URL as string;
 require('dotenv').config();
 
@@ -38,6 +39,15 @@ var lambda = new AWS.Lambda({ apiVersion: '2015-03-31', region: 'ap-south-1'});
 var ddb = new AWS.DynamoDB({apiVersion: '2012-08-10', region: 'ap-south-1'});
 var s3 = new AWS.S3({apiVersion: '2006-03-01', region: 'ap-south-1'});
 
+
+// initiate provider
+const provider = new Alchemy({
+  apiKey: process.env.PROVIDER_API_KEY,
+  network: Network.MATIC_MUMBAI, // Replace with your network.
+  })
+  
+console.log('rpvoder', provider)
+// config AWS 
 AWS.config.update({
     accessKeyId: process.env.ACCESSKEYID,
     secretAccessKey: process.env.SECRETACCESSKEY,
@@ -125,7 +135,6 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     console.log(input)
     const phone = input.phone.split(':')[1]
     const userDID = input.did
-    const aadhar = input.aadhar
  
     //init
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
@@ -151,42 +160,43 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
         networkId: core.NetworkId.Mumbai,
         seed: seedPhraseUser,
         revocationOpts: {
-        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-        id: 'https://rhs-staging.polygonid.me'
+          type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+          id: 'https://rhs-staging.polygonid.me'
         }
     });
     
-    console.log('cred for', userDID, 'from', issuerDID)
+    // restore issuer claims merkle tree
+    const out = (await identityWallet.getDIDTreeModel(issuerDID)).claimsTree
+    console.log('put', out)
+
     // prepare and issue credential
     const credentialRequest : any = createStorageCredential(userDID,input);
-    console.log('issdid', credentialRequest)
     const credential = await identityWallet.issueCredential(
         issuerDID,
         credentialRequest
     );
+    console.log('issdid', credential)
+
     // cache credential
     await dataStorage.credential.saveCredential(credential);
 
     // storagecreds are MTVP, so have to be published onchain
     await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
 
-    // restore issuer merkle tree
-    // TODO, restore tree
-
-    // make sure to add credentials to up-to-date merkle tree
+    // make sure to add credentials to claims merkle tree
     const add = await identityWallet.addCredentialsToMerkleTree(
       [credential],
       issuerDID,
     );
 
-    // initiate provider
-    const provider = new Alchemy({
-    apiKey: process.env.PROVIDER_API_KEY,
-    network: Network.maticmum, // Replace with your network.
-    })
-    // publish state
-    const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
+    console.log('add', add.oldTreeState)
 
+    // publish state
+    const signer = new ethers.Wallet(
+      wallet_seed.Item.SK.S, 
+      (dataStorage.states as EthStateStorage).provider
+    );
+    
     const txId = await proofService.transitState(
       issuerDID,
       add.oldTreeState,
@@ -195,6 +205,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       signer
     );
     console.log(txId);
+    //add.oldTreeState.claimsRoot = str.hashCode()
     
     // send credential to user to generate proof
     console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
@@ -210,8 +221,11 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
           'quantity': input.store_amount,
           'grade': input.store_grade,
           'businessName': wallet_seed.Item.BusinessName.S,
-          'credentialRequest': '',//credentialRequest, 
-          'issuerDID': issuerDID,
+          'credentialRequest': JSON.stringify(credentialRequest), //credentialRequest, 
+          'credential': JSON.stringify(credential),
+          'idW': JSON.stringify(add),
+          'txID': txId,
+          'issuerDID': issuerDID.string(),
       })})
       .then((execution: any) => console.log(execution.sid));
 
@@ -228,9 +242,13 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     const input = req.body
     const phone = input.phone.split(':')[1]
     const aadhar = input.aadhar
-    const issuerDID = input.issuerDiD // postman: string, WA: core.did
-    const credentialRequest = input.credentialRequest
+    const issuerDID = input.issuerDID // postman: string, WA: core.did
+    const credentialRequest = JSON.parse(input.credentialRequest)
+    const credential = JSON.parse(input.credential)
+    //const txID = input.txID
+    //const IdWallet_with_claims = JSON.parse(input.idW)
 
+    console.log('input', input)
     // initialize wallets
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
 
@@ -244,7 +262,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     let utf8Encode = new TextEncoder();
     const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
-
+    /*
     const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
         blockchain: core.Blockchain.Polygon,
@@ -257,47 +275,77 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     });
 
     // create standardized proofrequests
+    const credsWithIden3MTPProof = await identityWallet.generateIden3SparseMerkleTreeProof(
+          issuerDID,
+          IdWallet_with_claims.credentials,
+          txID
+        );
+
+    console.log('credsWithIden3MTPProof',credsWithIden3MTPProof);
+    credentialWallet.saveAll(credsWithIden3MTPProof);
+
     // get request for MERKLE TREE proof
-    const proofReqSig: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
+    const proofReqMtp: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
+    console.log('proofReqMtp', proofReqMtp)
 
     // generate proof
-    const { proof, pub_signals } = await proofService.generateProof(proofReqSig,userDID);
+    const { proof: proofMTP } = await proofService.generateProof(proofReqMtp,userDID);
 
-    console.log('proof', proof)
-    console.log('pub_signals', pub_signals)
+    console.log('proof', proofMTP)
 
     const proof_pub_json = JSON.stringify({
-        'proof': proof,
-        'pubsignals': pub_signals,
+        'proof': proofMTP,
     })
     console.log('proof_pub_json', proof_pub_json)
+    */
+
+    const dummy_proof = JSON.stringify({
+      pi_a: [
+        '254041211069551108331516475614761157881871509624246661252505417608352547147',
+        '17760291208075007179707262452035500335937966429909806258696320569176372401598',
+        '1'
+      ],
+      pi_b: [
+        [
+          '13705189434115041591549509246484848393969656888626542294893804987720288795334',
+          '8040850598112471196165217447373745139121305872563130223887280716198154531129'
+        ],
+        [
+          '3302032314030240605219490403429126129629294743147509822696323492640674164453',
+          '18182649430246728725960625911220160209270145926381195531452957442594202180638'
+        ],
+        [ '1', '0' ]
+      ],
+      pi_c: [
+        '8046083139349300857951075852556957858423118732998773034314593824161983604917',
+        '16141774609742591579514862199200667961862898459555270219627634532156967798982',
+        '1'
+      ],
+      protocol: 'groth16',
+      curve: 'bn128'
+    })
 
     // link that let verifiers know: 
     //  - issuer
     //  - query and criteria
-    //  - standard set of queries are available.
 
     // create the qr codes and return
     var addr = process.env.URI
-    var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
-    console.log('zkproof', zkProof)
-    var code = qr.image(zkProof, { type: 'svg' });
-    code.pipe(fs.createWriteStream('qr.svg'));
+    var zkProof = `${addr}/verify?text=${aadhar}${dummy_proof}` 
+    await QR.toFile('qr.png',zkProof)
 
     // store image on S3 bucket
-    var filename = 'qr.svg';
+    var filename = 'qr.png';
     await s3.upload({
       Bucket: process.env.S3BUCKET, 
       Key: filename, 
-      Body: fs.readFileSync('qr.svg'),
+      Body: fs.readFileSync('qr.png'),
       ACL: 'public-read',
-      ContentType: 'image/jpg',
+      ContentType: 'image/png',
     }).promise()
 
     // return url of QR image
-    res.send(JSON.stringify({
-      'url': `https://${process.env.S3BUCKET}.s3.ap-south-1.amazonaws.com/${filename}`
-    }))
+    res.send(`https://${process.env.S3BUCKET}.s3.ap-south-1.amazonaws.com/${filename}`)
 });
 
 app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
