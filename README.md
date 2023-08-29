@@ -16,13 +16,13 @@ There are three main components in this application:
 
 Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
 
-### App front examples
+# App front examples
 
-# origin certificate request and storage qr
+### origin certificate request and storage qr
 
-![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png)
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png =250x250)
 
-# storage certificate request
+### storage certificate request
 
 ![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Issue_storage_certificate.png)
 
