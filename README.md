@@ -65,7 +65,6 @@ URI=<NODEJS_SERVER_URI>
 2. Register your property using the prop flow.
 
 ### for the nila-id ORIGIN certification
-::UNTESTED::
 3. Type 'Sell' to invoke the origin certification 
 4. if a cultivation and a harvest event are detected, the origin certificate and proof QR will be send to the registered WhatsApp user. 
 5. the proof QR can be shared, send to anyone interested.
