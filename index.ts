@@ -14,10 +14,11 @@ import {
 
 import { 
     createStorageCredential,
-    createKYCAgeCredential, 
     createStorageCredentialRequest, 
-    createKYCAgeCredentialRequest 
   } from './credentials/storage';
+import {
+  createOriginCredential
+  } from './credentials/origin' 
 
 import {
     initInMemoryDataStorageAndWallets,
@@ -28,9 +29,12 @@ import {
 const qr = require('qr-image');
 const fs = require('fs');
 var path = require('path');
+const { Network, Alchemy } = require("alchemy-sdk");
+
 const rhsUrl = process.env.RHS_URL as string;
 require('dotenv').config();
 
+var lambda = new AWS.Lambda({ apiVersion: '2015-03-31', region: 'ap-south-1'});
 var ddb = new AWS.DynamoDB({apiVersion: '2012-08-10', region: 'ap-south-1'});
 var s3 = new AWS.S3({apiVersion: '2006-03-01', region: 'ap-south-1'});
 
@@ -121,6 +125,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     console.log(input)
     const phone = input.phone.split(':')[1]
     const userDID = input.did
+    const aadhar = input.aadhar
  
     //init
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
@@ -215,10 +220,10 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // API CALLED IN WABA FLOW: handler.Proof
 
-
     // receive input (device id, credentialRequest, userDID)
     const input = req.body
     const phone = input.phone.split(':')[1]
+    const aadhar = input.aadhar
     const issuerDID = input.issuerDiD // postman: string, WA: core.did
     const credentialRequest = input.credentialRequest
 
@@ -276,7 +281,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // create the qr codes and return
     var addr = process.env.URI
-    var zkProof = `${addr}/verify?text=${proof_pub_json}` 
+    var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
     console.log('zkproof', zkProof)
     var code = qr.image(zkProof, { type: 'svg' });
     code.pipe(fs.createWriteStream('qr.svg'));
@@ -298,55 +303,128 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 });
 
 app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
+  // API CALLED IN WABA FLOW: SUPPLY.py
+  let input = req.body
+  let pk = input.pk
+  let phone = input.phone.split(':')[1]
+  console.log('SISFJWOIDFJOSD', phone)
 
-  // API CALLED IN WABA FLOW: handler.Proof
+ // recover wallet seed (DEMO: Users have not been transferred to Polygon )
+ var params = {
+   TableName: 'polygon_aes',
+   Key: { 'phoneNumber': {'S': phone} },
+   ProjectionExpression: 'SK,BabyJubJub'
+ }
+ var wallet_seed = await ddb.getItem(params).promise()
+
+// initiate provider (use superlib of ethers because of ease to fetch metadata)
+ const provider = new Alchemy({
+    apiKey: process.env.PROVIDER_API_KEY,
+    network: Network.maticmum, // Replace with your network.
+
+ });
+ // find recent token deposits on user address from token minter
+ const blocknmb = await provider.core.getBlockNumber()
+ console.log('blocknmb', blocknmb)
+ const histblock = blocknmb - ((60*60*24*21) / 12.06) // doesnt have to be precise, current block minus estimated blocks by blocktime
+
+ const txs = await provider.core.getAssetTransfers({
+  fromBlock: '0x' + Math.round(histblock).toString(16).toUpperCase(), // find block of about 3 weeks ago.
+  fromAddress: process.env.FIELD_ACTIVITY_MINT_CONTRACT,
+  toAddress: pk,
+  excludeZeroValue: false,
+  category: ["erc20"],
+});
+
+ // check for recent tx from our crop token mint contact ( not sufficient - can also be seperate cultivations!!)
+  if (txs.transfers.length != 0){
+  // find metadata to create origin credentialRequest
+  // chitta sensing network is not available on Polygon yet.
+  let md = {
+    ct: 'paddy',
+    hrvst: '08/11/2023',
+    yield: 15,
+    lat: 12.543117,
+    lng: 79.326588,
+    size: 3,
+    fields: 6,
+    other: null
+  } // dummy metadata
+
+  // propose contract to issue credentialRequest
+  const credentialRequest : any = createOriginCredential(userDID,input,md);
+
+  // generate proof 
+
+  // return origin proof QR and storage request QR
+ }
+ else {
+  // queue request for field analysis to the chitta remote sensing node
+  var lambda_params = {
+    FunctionName: 'arn:aws:lambda:ap-south-1:867185477215:function:Chitta-Sensing-stage-GETLABEL', // the lambda function we are going to invoke
+    InvocationType: 'RequestResponse',
+    LogType: 'Tail',
+    Payload: JSON.stringify({
+      'phone': input['phone'].split(':')[1], 
+      'pk': pk,
+      }),
+  };
+  lambda.invoke(lambda_params).promise()
+  // return flow to wait for the sensing node to finish (unclear how long, depends on queue)
+  return res.send({ 'res': 0 })
+ }
+
+ /*
+ // return r
+ console.log('pk', pk)
+ const latestBlock = await provider.core.getBalance(pk,"latest");
+ console.log('balance', latestBlock)
+
+ // request credential from onchain issuer
+ const tokenContract = new ethers.Contract(process.env.CONTRACT_ADDRESS :, tokenAbi, connection);
+var signer = new ethers.Wallet(wallet_seed.Item.SK.S, connection);
+const txSigner= tokenContract.connect(signer);
+// where to put the credentialRequest
+const transaction = await txSigner.transfer(to,address,amount)
+const data = Promise.resolve(transaction)
+data.then(value => {
+
+    console.log(value)
+
+});
+*/
+
+
+
+
+ // request account balance 
+
+  // 
+  /*
+        {'key':'l','value':'{{trigger.parent.parameters.l}}'},
+        {'key':'service','value':'{{trigger.parent.parameters.service}}'},
+        {'key':'username','value':'{{trigger.parent.parameters.username}}'},
+        {'key':'phone', 'value': '{{trigger.parent.parameters.phone}}'},
+        {'key':'pk','value':'{{trigger.parent.parameters.pk}}'},
+        {'key':'phone','value':'{{trigger.parent.parameters.phone}}'}, # phone of friend or self
+        {'key':'status','value':'{{trigger.parent.parameters.status}}'},
+        {'key':'response','value':'{{trigger.parent.parameters.response}}'},
+        {'key':'f_list_string','value':'{{trigger.parent.parameters.f_list_string}}'},
+        {'key':'f_list','value':'{{trigger.parent.parameters.f_list}}'},
+        {'key':'offline_mode','value':'{{trigger.parent.parameters.offline_mode}}'},
+        {'key':'wallet','value':'{{trigger.parent.parameters.wallet}}'},
+    ]
+  */
+
+  // ping the account for recent token transactions and underlying metadata
+  // if none, request the remote sensing node for a update, return and repeat (outside the 30sec request time)
+
+  // if available, request onchain issue
+
+  
 
 
 });
-
   
-    /*
-    // API to generate proof 
-    //const userDID = core.DID.parse(req.body.user_DID)
 
-    //const pk: string = '3355e134a4e8dc7d41b55c13cc7b5bc5ef4f1196ad312193f2b19151b560907c'
-    //let userDID = core.DID.parse("did:polygonid:polygon:mumbai:2qKoN6262C6zARF7tDVTtxKhCC3eK3FRHjeTQ9Xm6i")
-
-    // init wallets and storage
-    
-
-    // instantiate identies (user)
-    
-    // get credential from APIs..
-    dataStorage.credential.saveCredential(credential);
-
-    console.log('this is the user DID',userDID)
-    console.log('this is the user from API','did:polygonid:polygon:mumbai:2qLhgrN1nGUMZXCwmeLFVxEPAR8ko5TXZseG445W5b')
-
-    console.log('datastorage', dataStorage)
-
-    // find get identity..
-    console.log('credentialRequest', credentialRequest)
-    // instantiate proofservice
-
-    console.log('proofReqSig', proofReqSig)
-    console.log('proofService', proofService)
-    console.log('made it to here.........')
-    
-    // generate proof
-    const { proof, pub_signals } = await proofService.generateProof(
-        proofReqSig,
-        userDID
-      );
-    console.log('proof', proof)
-    return res.send('successsss')
-
-    // verify proof
-    const sigProofOk = await proofService.verifyProof(
-    { proof, pub_signals },
-    CircuitId.AtomicQuerySigV2
-    );
-      console.log("valid: ", sigProofOk);
-    */
-
-app.listen(port, () => console.info(`Express listening on port ${port}!`));
+app.listen(port, () => console.info(`listening on port ${port}!`));

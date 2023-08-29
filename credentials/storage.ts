@@ -130,21 +130,21 @@ switch (circuitId) {
 }
 
 export function createStorageCredentialRequest(
-  credentialRequest: CredentialRequest
+  credentialRequest: CredentialRequest, ct: string, issuerDID: string
 ): ZeroKnowledgeProofRequest {
+
+const Ct = ct[0].toUpperCase() + ct.slice(1) // make sure first letter is uppercase
+
 const proofReqMtp: ZeroKnowledgeProofRequest = {
-  id: 1,
+  id: 1693297968,
   circuitId: CircuitId.AtomicQueryMTPV2,
   optional: false,
   query: {
-    allowedIssuers: ["*"],
+    allowedIssuers: [issuerDID],
     type: credentialRequest.type,
-    context:
-      "https://raw.githubusercontent.com/iden3/claim-schema-vocab/main/schemas/json-ld/kyc-v3.json-ld",
+    context: `https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/StoreCredentials/Store${Ct}Credential.jsonId`,
     credentialSubject: {
-      birthday: {
-        $lt: 20020101,
-      },
+      quantity: {},
     },
   },
 };

@@ -23,6 +23,7 @@
   "dependencies": {
     "@web3auth/ethereum-provider": "^6.1.7",
     "@web3auth/node-sdk": "^2.0.1",
+    "alchemy-sdk": "^2.10.0",
     "aws-sdk": "^2.1445.0",
     "axios": "^1.4.0",
     "body-parser": "^1.20.2",
