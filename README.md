@@ -12,7 +12,7 @@ There are three main components in this application:
 2. The nodeJS server providing 3 APIs to request credentials and generate proof
 3. additional Python Lambda functions to run the chatbotflow (webhooks,userKYC,etcetera.)
 
-# Official registration
+### Official registration
 
 Nila is registered as Aadhava Agri Services Private Limited
 
@@ -20,17 +20,17 @@ Nila is registered as Aadhava Agri Services Private Limited
 
 Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
 
-# App front examples
+## App front examples
 
-### origin certificate request and storage qr
+#### * origin certificate request and storage qr
 
 ![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png)
 
-### storage issue request
+#### * storage issue request
 
 ![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Issue_storage_certificate.png)
 
-### storage proof request
+#### * storage proof request
 
 ![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Proof_storage_certificate.png)
 
