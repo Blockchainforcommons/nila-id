@@ -9,3 +9,7 @@ creds
 commands
 nila-js-node/.env
 nila-py-chatbot/.env
+nila-js-node/.DS_Store
+nila-py-chatbot/.DS_Store
+.DS_Store
+
