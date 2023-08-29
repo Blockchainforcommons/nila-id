@@ -1,0 +1,6 @@
+
+ACCOUNT_SID='twilio account sid'
+AUTH_TOKEN='twilio auth token'
+ALCHEMY_API_KEY='ethereum provider api key'
+ALGOD_TOKEN='algorand provider api key'
+ROOT_MNEMONIC='root address mnemonic'

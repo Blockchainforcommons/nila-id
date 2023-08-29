@@ -1,0 +1,26 @@
+# reverse hash service url
+RHS_URL="https://rhs-staging.polygonid.me" 
+# state v2 contract address in the mumbai network
+ORIGIN_CERTS_CONTRACT='contract addresss'
+FIELD_ACTIVITY_MINT_CONTRACT='contract address'
+CREDENTIAL_ATOMIC_QUERY_SIG_VALIDATOR='contract addrsss'
+
+# path to the circuits folder
+CIRCUITS_PATH="./circuits" 
+# url to polygon mumbai network rpc node
+RPC_URL="https://rpc-mumbai.maticvigil.com" 
+# key in hex format with matic balance
+PROVIDER_API_KEY="9EDETEVZXZdAx9-LI6JOZe_7Opnvp8uh"
+
+#AWS KEYS
+ACCESSKEYID='aws access key'
+SECRETACCESSKEY='aws secret access key'
+REGION='AP-SOUTH-1'
+ENDPOINT='AP-SOUTH-1'
+S3BUCKET='S3 bucket name'
+
+# Twilio 
+ACCOUNT_SID='twilio account sid'
+AUTH_TOKEN='twilio auth token'
+# url
+URI='https://bf8b-2a02-a46a-7ff7-1-18d6-163e-578c-96e9.ngrok-free.app'
