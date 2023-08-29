@@ -22,9 +22,13 @@ Our users in general are not proficient in english. Our chatbot is created to al
 
 ![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png)
 
-### storage certificate request
+### storage issue request
 
 ![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Issue_storage_certificate.png)
+
+### storage proof request
+
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Proof_storage_certificate.png)
 
 ## Requirements
 1. NodeJS => 18.x
@@ -145,6 +149,8 @@ Storage Credentials are not stored locally in this version of nila-id. Storage c
 * As the Nila-sensing-network (formally chitta) is not available on Polygon, we are not able to create production-ready origin certificates.
 
 * It is impossible for now to verify multiple queries at once, this makes the UX very complex and cumbersome.
+
+* The JS-SDK Polygon ID documentation is incomplete and unclear. It uses different naming between examples, tutorials and documentation. It does not explain each function.
 
 * The UX provides a lot of QR codes to the user. It is likely he will get confused, in next version, the use of shorturls might be an improvement over qr images.
 

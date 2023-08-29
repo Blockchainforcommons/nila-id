@@ -7,3 +7,5 @@ indexOLD.ts
 create.ts
 creds
 commands
+nila-js-node/.env
+nila-py-chatbot/.env

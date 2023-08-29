@@ -7,9 +7,30 @@ import {
     EthStateStorage,
     CircuitId,
     CredentialRequest,
+    IProofService,
+    ProofService,
     ZeroKnowledgeProofRequest,
     CredentialStatusType,
+    KmsKeyType,
+    Identity,
+    Profile,
     IIdentityWallet,
+    InMemoryDataSource,
+    W3CCredential,
+    IdentityStorage,
+    InMemoryMerkleTreeStorage,
+    defaultEthConnectionConfig,
+    InMemoryPrivateKeyStore,
+    BjjProvider,
+    KMS,
+    CredentialWallet,
+    CredentialStatusResolverRegistry,
+    IssuerResolver,
+    RHSResolver,
+    OnChainResolver,
+    AgentResolver,
+    CredentialStorage,
+    IdentityWallet,
   } from "@0xpolygonid/js-sdk";
 
 import { 
@@ -103,7 +124,6 @@ API routers to issue off and on-chain credentials
           - return QR with ProofSig
 
 */
-
 const app = express();
 const port = 8080;
 const bodyParser = require('body-parser');
@@ -147,23 +167,26 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     }
     var wallet_seed = await ddb.getItem(params).promise()
 
-    console.log('BJJ', wallet_seed.Item.BabyJubJub.S)
     // generate the babyjubjub key from private key
     // TODO: FIND SOLUTION IN JS, TAKE PRESET
 
     let utf8Encode = new TextEncoder();
-    const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
+    const seedPhraseIssuer: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
 
-    const { did: issuerDID, credential: issuerAuthBJJCredential } = await identityWallet.createIdentity({
+    const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
         blockchain: core.Blockchain.Polygon,
         networkId: core.NetworkId.Mumbai,
-        seed: seedPhraseUser,
+        seed: seedPhraseIssuer,
         revocationOpts: {
           type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
           id: 'https://rhs-staging.polygonid.me'
         }
     });
+
+    console.log('received issuerDID', issuerDID.string())
+    console.log('received userDID', userDID)
+
     
     // restore issuer claims merkle tree
     const out = (await identityWallet.getDIDTreeModel(issuerDID)).claimsTree
@@ -188,8 +211,6 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       [credential],
       issuerDID,
     );
-
-    console.log('add', add.oldTreeState)
 
     // publish state
     const signer = new ethers.Wallet(
@@ -237,7 +258,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
 app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // API CALLED IN WABA FLOW: handler.Proof
-
+  
     // receive input (device id, credentialRequest, userDID)
     const input = req.body
     const phone = input.phone.split(':')[1]
@@ -245,10 +266,9 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     const issuerDID = input.issuerDID // postman: string, WA: core.did
     const credentialRequest = JSON.parse(input.credentialRequest)
     const credential = JSON.parse(input.credential)
-    //const txID = input.txID
-    //const IdWallet_with_claims = JSON.parse(input.idW)
-
-    console.log('input', input)
+    const txID = input.txID
+    const IdWallet_with_claims = JSON.parse(input.idW)
+    
     // initialize wallets
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
 
@@ -262,7 +282,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     let utf8Encode = new TextEncoder();
     const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
-    /*
+
     const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
         blockchain: core.Blockchain.Polygon,
@@ -273,8 +293,14 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
         id: 'https://rhs-staging.polygonid.me'
         }
     });
+    console.log('issuer req', issuerDID)
+
+    console.log('userdid loaded', userDID.string())
+    console.log('userdid issued', credential.credentialSubject.id)
+    console.log('userdid issued', IdWallet_with_claims.credentials[0].credentialSubject.id)
 
     // create standardized proofrequests
+    /*
     const credsWithIden3MTPProof = await identityWallet.generateIden3SparseMerkleTreeProof(
           issuerDID,
           IdWallet_with_claims.credentials,
@@ -283,6 +309,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     console.log('credsWithIden3MTPProof',credsWithIden3MTPProof);
     credentialWallet.saveAll(credsWithIden3MTPProof);
+    */
 
     // get request for MERKLE TREE proof
     const proofReqMtp: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
@@ -297,7 +324,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
         'proof': proofMTP,
     })
     console.log('proof_pub_json', proof_pub_json)
-    */
+    
 
     const dummy_proof = JSON.stringify({
       pi_a: [
@@ -331,7 +358,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // create the qr codes and return
     var addr = process.env.URI
-    var zkProof = `${addr}/verify?text=${aadhar}${dummy_proof}` 
+    var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
     await QR.toFile('qr.png',zkProof)
 
     // store image on S3 bucket

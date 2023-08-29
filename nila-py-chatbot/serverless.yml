@@ -1,0 +1,146 @@
+org: carst
+app: call-fuel-ts
+
+service: nila-chatbot
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.9
+  stage: stage
+  timeout: 30
+  region: 'ap-south-1'
+  iam:
+      role:
+        statements:
+          - Effect: Allow
+            Action:
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - s3:PutObject
+              - s3:*
+              - lambda:InvokeAsync
+              - lambda:InvokeFunction
+            Resource: 
+              - # list all resources you use here with their :arn
+
+
+plugins:
+  - serverless-python-requirements
+  - serverless-prune-plugin
+  #- serverless-rust
+
+package: 
+  exclude:
+      - 'venv/**'
+      - '_pycache_'
+      - package-lock.json
+      - flow.json
+      - 'node_modules/**'
+      - 'call-fuel-rs/**'
+      - 'call-fuel-ts/**'
+      - 'testnode/**'
+      - 'testnodego/**'
+      - 'did.js'
+
+custom:
+  prune:
+    automatic: true
+    number: 5
+  pythonRequirements:
+    dockerizePip: non-linux 
+    invalidateCaches: true
+    noDeploy:
+      - boto3
+      - botocore
+      - docutils
+      - jmespath
+      - pip
+      - python-dateutil
+      - s3transfer
+      - setuptools
+      - six
+
+functions:
+  # chatbot
+  Webhook:
+    handler: nav.Webhook 
+    events:
+      - http: 
+          path: webhook
+          method: POST
+  InMessageGetParams:
+    handler: nav.InMessageGetParams 
+    events:
+      - http: 
+          path: conversation
+          method: POST
+  GenerateAccount:
+    handler: nav.GenerateAccount 
+    events:
+      - http: 
+          path: gen_account
+          method: POST
+  # register
+  PropertyAssetCreate:
+    handler: assets.PropertyAssetCreate 
+    events:
+      - http: 
+          path: asset_create
+          method: POST
+  PropertyAssetView:
+    handler: assets.PropertyAssetView 
+    events:
+      - http: 
+          path: asset_view
+          method: POST
+  PropertyAssetEdit:
+    handler: assets.PropertyAssetEdit 
+    events:
+      - http: 
+          path: asset_edit
+          method: POST
+  # credit flow
+  InitialCreditRequest:
+    handler: liabilities.InitialCreditRequest 
+    events:
+      - http: 
+          path: credit_init
+          method: POST
+  CreditRequirements:
+    handler: liabilities.CreditRequirements
+    events:
+      - http: 
+          path: credit_req
+          method: POST
+  # RUST 
+  Contract_intent:
+    handler: liabilities.Contract_intent
+    events:
+      - http: 
+          path: credit_intent
+          method: POST
+  Contract_guarantee:
+    handler: liabilities.Contract_guarantee
+    events:
+      - http: 
+          path: credit_guarantee
+          method: POST
+  # supply sales flow
+  InitialSupplyRequest:
+    handler: sales.InitialSupplyRequest 
+    events:
+      - http: 
+          path: supply_init
+          method: POST
+  StorageManagerIssuer:
+    handler: sales.StorageManagerIssuer 
+    events:
+      - http: 
+          path: supply_storage
+          method: POST
+  
