@@ -20,7 +20,7 @@ Our users in general are not proficient in english. Our chatbot is created to al
 
 ### origin certificate request and storage qr
 
-![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png =250x250)
+![whatsApp sample](https://github.com/Blockchainforcommons/nila-id/blob/master/public/Initiate_sell_user.png | width=100)
 
 ### storage certificate request
 
