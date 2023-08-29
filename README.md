@@ -60,19 +60,19 @@ URI=<NODEJS_SERVER_URI>
 
 ## Invoke a flow
 
-# registration is mandatory
+### registration is mandatory
 1. 'Say hi :wave:' to the WABA phone number you registered with.
 2. Register your property using the prop flow.
 
+### for the nila-id ORIGIN certification
 ::UNTESTED::
-# for the nila-id ORIGIN certification
 3. Type 'Sell' to invoke the origin certification 
 4. if a cultivation and a harvest event are detected, the origin certificate and proof QR will be send to the registered WhatsApp user. 
 5. the proof QR can be shared, send to anyone interested.
 6. Answer the storage questions.
 7. if in store or will be stored, let the storage manager scan the storage QR.
 
-# for nila-id STORAGE certification
+### for nila-id STORAGE certification
 -- storage manager flow:
 8. Scan the storage QR 
 9. enter quantity
