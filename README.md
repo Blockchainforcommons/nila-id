@@ -12,6 +12,10 @@ There are three main components in this application:
 2. The nodeJS server providing 3 APIs to request credentials and generate proof
 3. additional Python Lambda functions to run the chatbotflow (webhooks,userKYC,etcetera.)
 
+## Languages
+
+Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
+
 ## Requirements
 1. NodeJS => 18.x
 2. Python => 3.9
@@ -131,6 +135,8 @@ Storage Credentials are not stored locally in this version of nila-id. Storage c
 * As the Nila-sensing-network (formally chitta) is not available on Polygon, we are not able to create production-ready origin certificates.
 
 * It is impossible for now to verify multiple queries at once, this makes the UX very complex and cumbersome.
+
+* The UX provides a lot of QR codes to the user. It is likely he will get confused, in next version, the use of shorturls might be an improvement over qr images.
 
 ## How to initialize the chatbot:
 1. Get an account at Twilio 

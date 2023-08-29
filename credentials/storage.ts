@@ -21,11 +21,11 @@ function ifPaddy(did: core.DID, input: any){
     schema = 'https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/StoreCredentials/StorePaddyCredential.json',
     subject = {
       id: did,
-      aadhar: '', //input.Aadhar,
+      //aadhar: '', //input.Aadhar,
       grade: input.store_grade,
       quantity: parseFloat(input.store_amount),
-      variety: '', //input.variety,
-      state: '', //input.condition,
+      //variety: '', //input.variety,
+      //state: '', //input.condition,
     };
   }
   else {
@@ -34,11 +34,11 @@ function ifPaddy(did: core.DID, input: any){
     schema = 'https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/StoreCredentials/StorePaddyCredential.json',
     subject = {
       id: did,
-      aadhar: '', //input.Aadhar,
+      //aadhar: '', //input.Aadhar,
       grade: input.store_grade,
       quantity: parseFloat(input.store_amount),
-      variety: '', //input.variety,
-      state: '', //input.condition,
+      //variety: '', //input.variety,
+      //state: '', //input.condition,
     };
   }
   return {schema, subject, date};

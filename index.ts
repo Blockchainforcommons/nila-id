@@ -138,6 +138,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     }
     var wallet_seed = await ddb.getItem(params).promise()
 
+    console.log('BJJ', wallet_seed.Item.BabyJubJub.S)
     // generate the babyjubjub key from private key
     // TODO: FIND SOLUTION IN JS, TAKE PRESET
 
@@ -155,6 +156,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
         }
     });
     
+    console.log('cred for', userDID, 'from', issuerDID)
     // prepare and issue credential
     const credentialRequest : any = createStorageCredential(userDID,input);
     console.log('issdid', credentialRequest)
@@ -177,18 +179,20 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       issuerDID,
     );
 
+    // initiate provider
+    const provider = new Alchemy({
+    apiKey: process.env.PROVIDER_API_KEY,
+    network: Network.maticmum, // Replace with your network.
+    })
     // publish state
-    const ethSigner = new ethers.Wallet(
-      wallet_seed.Item.SK.S,
-      (dataStorage.states as EthStateStorage).provider
-    );
+    const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
 
     const txId = await proofService.transitState(
       issuerDID,
       add.oldTreeState,
       true,
       dataStorage.states,
-      ethSigner
+      signer
     );
     console.log(txId);
     
@@ -297,6 +301,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 });
 
 app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
+
   // API CALLED IN WABA FLOW: SUPPLY.py
   let input = req.body
   let pk = input.pk
@@ -366,9 +371,9 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
   const credentialRequest : any = createOriginCredential(userDID,input,md);
 
   // request origin certificate from onchain issuer 
-  const contract = require("https://github.com/iden3/contracts/blob/master/contracts/test-helpers/IdentityExample.sol"); // load contract
-  const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
-  const OnchainIssuer = new ethers.Contract('0x134B1BE34911E39A8397ec6289782989729807a4', contract.abi, signer);
+  //const contract = require("https://github.com/iden3/contracts/blob/master/contracts/test-helpers/IdentityExample.sol"); // load contract
+  //const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
+  //const OnchainIssuer = new ethers.Contract('0x134B1BE34911E39A8397ec6289782989729807a4', contract.abi, signer);
 
 
 
@@ -460,5 +465,4 @@ data.then(value => {
 
 });
   
-
 app.listen(port, () => console.info(`listening on port ${port}!`));

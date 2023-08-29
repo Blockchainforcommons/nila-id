@@ -47,7 +47,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const rpcUrl = process.env.RPC_URL as string;
-const contractAddress = process.env.CONTRACT_ADDRESS as string;
+const contractAddress = process.env.ORIGIN_CERTS_CONTRACT as string;
 const circuitsFolder = process.env.CIRCUITS_PATH as string;
 
 export function initDataStorage(): IDataStorage {
