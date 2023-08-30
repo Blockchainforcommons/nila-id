@@ -69,6 +69,19 @@ export function initDataStorage(): IDataStorage {
   return dataStorage;
 }
 
+export async function loadIdentityWallet(
+  dataStorage: IDataStorage,
+  credentialWallet: ICredentialWallet,
+  BJJ: KmsKeyType.BabyJubJub
+): Promise<IIdentityWallet> {
+  const memoryKeyStore = new InMemoryPrivateKeyStore();
+  const bjjProvider = new BjjProvider(KmsKeyType.BabyJubJub, memoryKeyStore);
+  const kms = new KMS();
+  kms.registerKeyProvider(KmsKeyType.BabyJubJub, bjjProvider);
+
+  return new IdentityWallet(kms, dataStorage, credentialWallet);
+}
+
 export async function initIdentityWallet(
   dataStorage: IDataStorage,
   credentialWallet: ICredentialWallet

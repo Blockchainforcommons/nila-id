@@ -7,6 +7,10 @@ import {
     EthStateStorage,
     ZeroKnowledgeProofRequest,
     CredentialStatusType,
+    IdentityWallet,
+    IIdentityWallet,
+    ProofService,
+    KmsKeyType,
   } from "@0xpolygonid/js-sdk";
 
 import { 
@@ -22,6 +26,10 @@ import {
     initInMemoryDataStorageAndWallets,
     initCircuitStorage,
     initProofService,
+    initDataStorage,
+    initCredentialWallet,
+    initIdentityWallet,
+    loadIdentityWallet,
   } from "./walletSetup";
 
 const QR = require('qrcode')
@@ -40,7 +48,6 @@ const provider = new Alchemy({
   network: Network.MATIC_MUMBAI, // Replace with your network.
   })
   
-console.log('provider', provider)
 // config AWS 
 AWS.config.update({
     accessKeyId: process.env.ACCESSKEYID,
@@ -107,8 +114,8 @@ app.use(express.static('schemas'))
 app.use(bodyParser.json());
 
 async function init(){
+  const circuitStorage = await initCircuitStorage();
   let { dataStorage, credentialWallet, identityWallet } = await initInMemoryDataStorageAndWallets();
-    const circuitStorage = await initCircuitStorage();
     const proofService = await initProofService(
         identityWallet,
         credentialWallet,
@@ -116,7 +123,37 @@ async function init(){
         circuitStorage
     );
     
-    return {identityWallet,credentialWallet,dataStorage,proofService,circuitStorage}
+    return {identityWallet,credentialWallet,proofService,dataStorage,circuitStorage}
+}
+
+async function instantiate(data : any){
+  const dataStorage = initDataStorage()
+  const circuitStorage = await initCircuitStorage()
+  // restore data in storage
+  await dataStorage.credential.saveAllCredentials(JSON.parse(data.credentials.S))
+  await dataStorage.identity.saveIdentity(JSON.parse(data.identities.S))
+  // instantiate wallets
+  const credentialWallet = await initCredentialWallet(dataStorage)
+  const identityWallet = await loadIdentityWallet(dataStorage,credentialWallet,data.BabyJubJub.S)
+  const proofService = await initProofService(identityWallet,credentialWallet,dataStorage.states,circuitStorage)
+  return {identityWallet,credentialWallet,proofService,dataStorage,circuitStorage}
+}
+
+async function storePersist(phone : string,dataStorage : any,txId : string){
+  // store the updated issuer identity and state
+  var updateIdentity = {
+    TableName: 'polygon_aes',
+    Key: { 'phoneNumber': {'S': phone} },
+    UpdateExpression: 'set credentials= :c, identities = :ids, state = :st',
+    ExpressionAttributeValues: {
+      ':c':  { 'S' : JSON.stringify(await dataStorage.credential.listCredentials())},
+      ':ids':  { 'S' : JSON.stringify(await dataStorage.identity.getAllIdentities())},
+      ':st':  { 'S' : txId},
+    },
+    ReturnValues: "ALL_NEW",
+  }
+  await ddb.updateItem(updateIdentity).promise()
+
 }
 
 app.post('/IssueStorage', async (req: Request, res: Response) => {
@@ -129,44 +166,39 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     const phone = input.phone.split(':')[1]
     const userDID = input.did
  
-    //init
-    let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
-
     // recover wallet seed (DEMO: Users have not been transferred to Polygon )
     var params = {
       TableName: 'polygon_aes',
       Key: { 'phoneNumber': {'S': phone} },
-      ProjectionExpression: 'SK,BabyJubJub,BusinessName'
+      ProjectionExpression: 'SK,BabyJubJub,BusinessName,credentials,identities'
     }
-    var wallet_seed = await ddb.getItem(params).promise()
+    var data = await ddb.getItem(params).promise()
+    var data = data.Item
 
-    // generate the babyjubjub key from private key
-    // TODO: FIND SOLUTION IN JS, TAKE PRESET
+    console.log('data', data)
 
-    let utf8Encode = new TextEncoder();
-    const seedPhraseIssuer: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
-
-    // instantiate issuer identity
-    const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity({
-        method: core.DidMethod.Iden3,
-        blockchain: core.Blockchain.Polygon,
-        networkId: core.NetworkId.Mumbai,
-        //seed: seedPhraseIssuer,
-        revocationOpts: {
-          type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-          id: 'https://rhs-staging.polygonid.me'
-        }
-    });
-
-    console.log('received issuerDID', issuerDID.string())
-    console.log('received userDID', userDID)
+    // see if the identity is available, load wallets and storage, otherwise initiate new
+    const { identityWallet, credentialWallet, proofService, dataStorage, circuitStorage } = Object.keys(data).length > 0 ? await instantiate(data) : await init()
     
-    // restore issuer claims merkle tree
-    const out = (await identityWallet.getDIDTreeModel(issuerDID)).claimsTree
-    console.log('put', out)
+    // create identity KMS with stored BJJ
+    let utf8Encode = new TextEncoder();
+    const seedPhraseIssuer: Uint8Array = utf8Encode.encode(data.BabyJubJub.S);  
 
+    const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity({
+      method: core.DidMethod.Iden3,
+      blockchain: core.Blockchain.Polygon,
+      networkId: core.NetworkId.Mumbai,
+      seed: seedPhraseIssuer,
+      revocationOpts: {
+        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+        id: 'https://rhs-staging.polygonid.me'
+      }
+  }); 
+    console.log('issuerDID',issuerDID)
+    
     // prepare and issue credential
     const credentialRequest : any = createStorageCredential(userDID,input);
+    console.log('credent', credentialRequest)
     const credential = await identityWallet.issueCredential(
         issuerDID,
         credentialRequest
@@ -187,7 +219,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
 
     // publish state
     const signer = new ethers.Wallet(
-      wallet_seed.Item.SK.S, 
+      data.SK.S, 
       (dataStorage.states as EthStateStorage).provider
     );
     
@@ -199,7 +231,10 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       signer
     );
     console.log(txId);
-    
+
+    // update persistent storage with new identifiers and credentials
+    await storePersist(phone,dataStorage,txId)
+  
     // send credential to user to generate proof
     console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
     const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
@@ -213,11 +248,11 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
           'ct': input.ct,
           'quantity': input.store_amount,
           'grade': input.store_grade,
-          'businessName': wallet_seed.Item.BusinessName.S,
+          'businessName': data.BusinessName.S,
           'credentialRequest': JSON.stringify(credentialRequest), //credentialRequest, 
           'credential': JSON.stringify(credential),
           'idW': JSON.stringify(add),
-          'txID': txId,
+          //'txID': txId,
           'issuerDID': issuerDID.string(),
       })})
       .then((execution: any) => console.log(execution.sid));
@@ -240,9 +275,6 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     const credential = JSON.parse(input.credential)
     const txID = input.txID
     const IdWallet_with_claims = JSON.parse(input.idW)
-    
-    // initialize wallets
-    let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
   
     // recover wallet seed (DEMO: Users have not been transferred to Polygon )
     var params = {
@@ -250,10 +282,14 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
       Key: { 'phoneNumber': {'S': phone} },
       ProjectionExpression: 'SK,BabyJubJub'
     }
-    var wallet_seed = await ddb.getItem(params).promise()
+    var data = await ddb.getItem(params).promise()
+    var data = data.Item
+    // see if the identity is available, load wallets and storage, otherwise initiate new
+    const { identityWallet, credentialWallet, proofService, dataStorage, circuitStorage } = Object.keys(data).length > 0 ? await instantiate(data) : await init()
+    
 
     let utf8Encode = new TextEncoder();
-    const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
+    const seedPhraseUser: Uint8Array = utf8Encode.encode(data.Item.BabyJubJub.S);  
 
     const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
@@ -303,6 +339,9 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
       ACL: 'public-read',
       ContentType: 'image/png',
     }).promise()
+
+    // update persistent storage with new identifiers and credentials
+    await storePersist(phone,dataStorage,txID)
 
     // return url of QR image
     res.send(`https://${process.env.S3BUCKET}.s3.ap-south-1.amazonaws.com/${filename}`)
