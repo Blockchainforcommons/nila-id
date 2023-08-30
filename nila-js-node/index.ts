@@ -5,32 +5,8 @@ import { ethers } from "ethers";
 import {
     core,
     EthStateStorage,
-    CircuitId,
-    CredentialRequest,
-    IProofService,
-    ProofService,
     ZeroKnowledgeProofRequest,
     CredentialStatusType,
-    KmsKeyType,
-    Identity,
-    Profile,
-    IIdentityWallet,
-    InMemoryDataSource,
-    W3CCredential,
-    IdentityStorage,
-    InMemoryMerkleTreeStorage,
-    defaultEthConnectionConfig,
-    InMemoryPrivateKeyStore,
-    BjjProvider,
-    KMS,
-    CredentialWallet,
-    CredentialStatusResolverRegistry,
-    IssuerResolver,
-    RHSResolver,
-    OnChainResolver,
-    AgentResolver,
-    CredentialStorage,
-    IdentityWallet,
   } from "@0xpolygonid/js-sdk";
 
 import { 
@@ -38,7 +14,8 @@ import {
     createStorageCredentialRequest, 
   } from './credentials/storage';
 import {
-  createOriginCredential
+  createOriginCredential,
+  createOriginCredentialRequest, 
   } from './credentials/origin' 
 
 import {
@@ -47,11 +24,8 @@ import {
     initProofService,
   } from "./walletSetup";
 
-const qr = require('qr-image');
 const QR = require('qrcode')
-
 const fs = require('fs');
-var path = require('path');
 const { Network, Alchemy } = require("alchemy-sdk");
 const rhsUrl = process.env.RHS_URL as string;
 require('dotenv').config();
@@ -60,14 +34,13 @@ var lambda = new AWS.Lambda({ apiVersion: '2015-03-31', region: 'ap-south-1'});
 var ddb = new AWS.DynamoDB({apiVersion: '2012-08-10', region: 'ap-south-1'});
 var s3 = new AWS.S3({apiVersion: '2006-03-01', region: 'ap-south-1'});
 
-
 // initiate provider
 const provider = new Alchemy({
   apiKey: process.env.PROVIDER_API_KEY,
   network: Network.MATIC_MUMBAI, // Replace with your network.
   })
   
-console.log('rpvoder', provider)
+console.log('provider', provider)
 // config AWS 
 AWS.config.update({
     accessKeyId: process.env.ACCESSKEYID,
@@ -270,7 +243,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     
     // initialize wallets
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
-    /*
+  
     // recover wallet seed (DEMO: Users have not been transferred to Polygon )
     var params = {
       TableName: 'polygon_aes',
@@ -311,33 +284,6 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
         'proof': proofMTP,
     })
     console.log('proof_pub_json', proof_pub_json)
-    */
-
-    const dummy_proof = JSON.stringify({
-      pi_a: [
-        '254041211069551108331516475614761157881871509624246661252505417608352547147',
-        '17760291208075007179707262452035500335937966429909806258696320569176372401598',
-        '1'
-      ],
-      pi_b: [
-        [
-          '13705189434115041591549509246484848393969656888626542294893804987720288795334',
-          '8040850598112471196165217447373745139121305872563130223887280716198154531129'
-        ],
-        [
-          '3302032314030240605219490403429126129629294743147509822696323492640674164453',
-          '18182649430246728725960625911220160209270145926381195531452957442594202180638'
-        ],
-        [ '1', '0' ]
-      ],
-      pi_c: [
-        '8046083139349300857951075852556957858423118732998773034314593824161983604917',
-        '16141774609742591579514862199200667961862898459555270219627634532156967798982',
-        '1'
-      ],
-      protocol: 'groth16',
-      curve: 'bn128'
-    })
 
     // link that let verifiers know: 
     //  - issuer
@@ -345,7 +291,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // create the qr codes and return
     var addr = process.env.URI
-    var zkProof = `${addr}/verify?text=${aadhar}${dummy_proof}` 
+    var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
     await QR.toFile('qr.png',zkProof)
 
     // store image on S3 bucket
@@ -424,15 +370,10 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
       other: null
     } // dummy metadata
 
-
     // propose contract to issue credentialRequest
     const credentialRequest : any = createOriginCredential(userDID,input,md);
 
     console.log('credentialRequest', credentialRequest)
-    // request origin certificate from onchain issuer 
-    //const contract = require("https://github.com/iden3/contracts/blob/master/contracts/test-helpers/IdentityExample.sol"); // load contract
-    //const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
-    //const OnchainIssuer = new ethers.Contract('0x134B1BE34911E39A8397ec6289782989729807a4', contract.abi, signer);
 
     // generate proof
     const { proof, pub_signals } = await proofService.generateProof(credentialRequest,userDID);
@@ -463,57 +404,6 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
     // return flow to wait for the sensing node to finish (unclear how long, depends on queue)
     return res.send({ 'res': 0 })
   }
-
- /*
- // return r
- console.log('pk', pk)
- const latestBlock = await provider.core.getBalance(pk,"latest");
- console.log('balance', latestBlock)
-
- // request credential from onchain issuer
- const tokenContract = new ethers.Contract(process.env.CONTRACT_ADDRESS :, tokenAbi, connection);
-var signer = new ethers.Wallet(wallet_seed.Item.SK.S, connection);
-const txSigner= tokenContract.connect(signer);
-// where to put the credentialRequest
-const transaction = await txSigner.transfer(to,address,amount)
-const data = Promise.resolve(transaction)
-data.then(value => {
-
-    console.log(value)
-
-});
-*/
-
-
-
-
- // request account balance 
-
-  // 
-  /*
-        {'key':'l','value':'{{trigger.parent.parameters.l}}'},
-        {'key':'service','value':'{{trigger.parent.parameters.service}}'},
-        {'key':'username','value':'{{trigger.parent.parameters.username}}'},
-        {'key':'phone', 'value': '{{trigger.parent.parameters.phone}}'},
-        {'key':'pk','value':'{{trigger.parent.parameters.pk}}'},
-        {'key':'phone','value':'{{trigger.parent.parameters.phone}}'}, # phone of friend or self
-        {'key':'status','value':'{{trigger.parent.parameters.status}}'},
-        {'key':'response','value':'{{trigger.parent.parameters.response}}'},
-        {'key':'f_list_string','value':'{{trigger.parent.parameters.f_list_string}}'},
-        {'key':'f_list','value':'{{trigger.parent.parameters.f_list}}'},
-        {'key':'offline_mode','value':'{{trigger.parent.parameters.offline_mode}}'},
-        {'key':'wallet','value':'{{trigger.parent.parameters.wallet}}'},
-    ]
-  */
-
-  // ping the account for recent token transactions and underlying metadata
-  // if none, request the remote sensing node for a update, return and repeat (outside the 30sec request time)
-
-  // if available, request onchain issue
-
-  
-
-
 });
   
 app.listen(port, () => console.info(`listening on port ${port}!`));
