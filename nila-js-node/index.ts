@@ -178,7 +178,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
         method: core.DidMethod.Iden3,
         blockchain: core.Blockchain.Polygon,
         networkId: core.NetworkId.Mumbai,
-        seed: seedPhraseIssuer,
+        //seed: seedPhraseIssuer,
         revocationOpts: {
           type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
           id: 'https://rhs-staging.polygonid.me'
@@ -226,7 +226,6 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       signer
     );
     console.log(txId);
-    //add.oldTreeState.claimsRoot = str.hashCode()
     
     // send credential to user to generate proof
     console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
@@ -271,7 +270,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     
     // initialize wallets
     let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
-
+    /*
     // recover wallet seed (DEMO: Users have not been transferred to Polygon )
     var params = {
       TableName: 'polygon_aes',
@@ -293,23 +292,11 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
         id: 'https://rhs-staging.polygonid.me'
         }
     });
-    console.log('issuer req', issuerDID)
-
-    console.log('userdid loaded', userDID.string())
-    console.log('userdid issued', credential.credentialSubject.id)
-    console.log('userdid issued', IdWallet_with_claims.credentials[0].credentialSubject.id)
 
     // create standardized proofrequests
-    
-    const credsWithIden3MTPProof = await identityWallet.generateIden3SparseMerkleTreeProof(
-          issuerDID,
-          IdWallet_with_claims.credentials,
-          txID
-        );
 
-    console.log('credsWithIden3MTPProof',credsWithIden3MTPProof);
-    credentialWallet.saveAll(credsWithIden3MTPProof);
-    
+    // storagecreds are MTVP, so have to be transited onchain
+    await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
 
     // get request for MERKLE TREE proof
     const proofReqMtp: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
@@ -324,7 +311,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
         'proof': proofMTP,
     })
     console.log('proof_pub_json', proof_pub_json)
-    
+    */
 
     const dummy_proof = JSON.stringify({
       pi_a: [
@@ -358,7 +345,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // create the qr codes and return
     var addr = process.env.URI
-    var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
+    var zkProof = `${addr}/verify?text=${aadhar}${dummy_proof}` 
     await QR.toFile('qr.png',zkProof)
 
     // store image on S3 bucket
@@ -408,12 +395,7 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
         id: 'https://rhs-staging.polygonid.me'
       }
   });
-  // initiate provider (use superlib of ethers because of ease to fetch metadata)
-  const provider = new Alchemy({
-      apiKey: process.env.PROVIDER_API_KEY,
-      network: Network.maticmum, // Replace with your network.
 
-  });
   // find recent token deposits on user address from token minter
   const blocknmb = await provider.core.getBlockNumber()
   console.log('blocknmb', blocknmb)
@@ -428,65 +410,59 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
   });
 
  // check for recent tx from our crop token mint contact ( not sufficient - can also be seperate cultivations!!)
-  if (txs.transfers.length != 0){
-  // find metadata to create origin credentialRequest
-  // chitta sensing network is not available on Polygon yet.
-  let md = {
-    ct: 'paddy',
-    hrvst: '08/11/2023',
-    yield: 15,
-    lat: 12.543117,
-    lng: 79.326588,
-    size: 3,
-    fields: 6,
-    other: null
-  } // dummy metadata
-
-  // propose contract to issue credentialRequest
-  const credentialRequest : any = createOriginCredential(userDID,input,md);
-
-  // request origin certificate from onchain issuer 
-  //const contract = require("https://github.com/iden3/contracts/blob/master/contracts/test-helpers/IdentityExample.sol"); // load contract
-  //const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
-  //const OnchainIssuer = new ethers.Contract('0x134B1BE34911E39A8397ec6289782989729807a4', contract.abi, signer);
+  if (txs.transfers.length == 0){
+    // find metadata to create origin credentialRequest
+    // chitta sensing network is not available on Polygon yet.
+    let md = {
+      ct: 'paddy',
+      hrvst: '08/11/2023',
+      yield: 15,
+      lat: 12.543117,
+      lng: 79.326588,
+      size: 3,
+      fields: 6,
+      other: null
+    } // dummy metadata
 
 
+    // propose contract to issue credentialRequest
+    const credentialRequest : any = createOriginCredential(userDID,input,md);
 
+    console.log('credentialRequest', credentialRequest)
+    // request origin certificate from onchain issuer 
+    //const contract = require("https://github.com/iden3/contracts/blob/master/contracts/test-helpers/IdentityExample.sol"); // load contract
+    //const signer = new ethers.Wallet(wallet_seed.Item.SK.S, provider);
+    //const OnchainIssuer = new ethers.Contract('0x134B1BE34911E39A8397ec6289782989729807a4', contract.abi, signer);
 
+    // generate proof
+    const { proof, pub_signals } = await proofService.generateProof(credentialRequest,userDID);
 
+    console.log('proof', proof)
+    console.log('pub_signals', pub_signals)
 
+    const proof_pub_json = JSON.stringify({
+        'proof': proof,
+        'pubsignals': pub_signals,
+    })
+    console.log('proof_pub_json', proof_pub_json)
 
-
-
-  // generate proof
-  const { proof, pub_signals } = await proofService.generateProof(credentialRequest,userDID);
-
-  console.log('proof', proof)
-  console.log('pub_signals', pub_signals)
-
-  const proof_pub_json = JSON.stringify({
-      'proof': proof,
-      'pubsignals': pub_signals,
-  })
-  console.log('proof_pub_json', proof_pub_json)
-
-  // return origin proof QR and storage request QR
- }
+    // return origin proof QR and storage request QR
+  }
  else {
-  // queue request for field analysis to the chitta remote sensing node
-  var lambda_params = {
-    FunctionName: 'arn:aws:lambda:ap-south-1:867185477215:function:Chitta-Sensing-stage-GETLABEL', // the lambda function we are going to invoke
-    InvocationType: 'RequestResponse',
-    LogType: 'Tail',
-    Payload: JSON.stringify({
-      'phone': input['phone'].split(':')[1], 
-      'pk': pk,
-      }),
-  };
-  lambda.invoke(lambda_params).promise()
-  // return flow to wait for the sensing node to finish (unclear how long, depends on queue)
-  return res.send({ 'res': 0 })
- }
+    // queue request for field analysis to the chitta remote sensing node
+    var lambda_params = {
+      FunctionName: 'arn:aws:lambda:ap-south-1:867185477215:function:Chitta-Sensing-stage-GETLABEL', // the lambda function we are going to invoke
+      InvocationType: 'RequestResponse',
+      LogType: 'Tail',
+      Payload: JSON.stringify({
+        'phone': input['phone'].split(':')[1], 
+        'pk': pk,
+        }),
+    };
+    lambda.invoke(lambda_params).promise()
+    // return flow to wait for the sensing node to finish (unclear how long, depends on queue)
+    return res.send({ 'res': 0 })
+  }
 
  /*
  // return r
