@@ -114,6 +114,7 @@ app.use(express.static('schemas'))
 app.use(bodyParser.json());
 
 async function init(){
+  console.log('init, no user found')
   const circuitStorage = await initCircuitStorage();
   let { dataStorage, credentialWallet, identityWallet } = await initInMemoryDataStorageAndWallets();
     const proofService = await initProofService(
@@ -127,6 +128,7 @@ async function init(){
 }
 
 async function instantiate(data : any){
+  console.log('instantiate, user found')
   const dataStorage = initDataStorage()
   const circuitStorage = await initCircuitStorage()
   // restore data in storage
@@ -178,13 +180,13 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     console.log('data', data)
 
     // see if the identity is available, load wallets and storage, otherwise initiate new
-    const { identityWallet, credentialWallet, proofService, dataStorage, circuitStorage } = Object.keys(data).length > 0 ? await instantiate(data) : await init()
+    const { identityWallet, credentialWallet, proofService, dataStorage, circuitStorage } = data === undefined ? await init() : await instantiate(data)
     
     // create identity KMS with stored BJJ
     let utf8Encode = new TextEncoder();
-    const seedPhraseIssuer: Uint8Array = utf8Encode.encode(data.BabyJubJub.S);  
-
-    const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity({
+    const seedPhraseIssuer: Uint8Array = data === undefined ? utf8Encode.encode('') : utf8Encode.encode(data.BabyJubJub.S)
+    console.log('seedPhraseIssuer', seedPhraseIssuer) 
+    const options = {
       method: core.DidMethod.Iden3,
       blockchain: core.Blockchain.Polygon,
       networkId: core.NetworkId.Mumbai,
@@ -193,7 +195,11 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
         type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
         id: 'https://rhs-staging.polygonid.me'
       }
-  }); 
+    }
+    const {seed, ...withoutSeed} = options
+
+
+    const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity(data === undefined ? withoutSeed : options); 
     console.log('issuerDID',issuerDID)
     
     // prepare and issue credential
