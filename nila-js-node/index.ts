@@ -173,6 +173,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     let utf8Encode = new TextEncoder();
     const seedPhraseIssuer: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
 
+    // instantiate issuer identity
     const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
         blockchain: core.Blockchain.Polygon,
@@ -186,7 +187,6 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
 
     console.log('received issuerDID', issuerDID.string())
     console.log('received userDID', userDID)
-
     
     // restore issuer claims merkle tree
     const out = (await identityWallet.getDIDTreeModel(issuerDID)).claimsTree
@@ -203,7 +203,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     // cache credential
     await dataStorage.credential.saveCredential(credential);
 
-    // storagecreds are MTVP, so have to be published onchain
+    // storagecreds are MTVP, so have to be transited onchain
     await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
 
     // make sure to add credentials to claims merkle tree
@@ -300,7 +300,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     console.log('userdid issued', IdWallet_with_claims.credentials[0].credentialSubject.id)
 
     // create standardized proofrequests
-    /*
+    
     const credsWithIden3MTPProof = await identityWallet.generateIden3SparseMerkleTreeProof(
           issuerDID,
           IdWallet_with_claims.credentials,
@@ -309,7 +309,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     console.log('credsWithIden3MTPProof',credsWithIden3MTPProof);
     credentialWallet.saveAll(credsWithIden3MTPProof);
-    */
+    
 
     // get request for MERKLE TREE proof
     const proofReqMtp: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
@@ -404,8 +404,8 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
       networkId: core.NetworkId.Mumbai,
       seed: seedPhraseUser,
       revocationOpts: {
-      type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-      id: 'https://rhs-staging.polygonid.me'
+        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+        id: 'https://rhs-staging.polygonid.me'
       }
   });
   // initiate provider (use superlib of ethers because of ease to fetch metadata)

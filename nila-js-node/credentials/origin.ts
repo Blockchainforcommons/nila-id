@@ -13,7 +13,7 @@ import {
     let date = new Date();
     date.setMonth(date.getMonth() + 6);
     const credentialRequest: CredentialRequest = {
-        credentialSchema: 'https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/OriginCredentials/OriginCredential.json',
+        credentialSchema: 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/nila-js-node/schemas/OriginCredentials/OriginCredential.json',
         type: "Origin",
         credentialSubject: {
             id: did,
@@ -43,7 +43,7 @@ const proofReqMtp: ZeroKnowledgeProofRequest = {
   query: {
     allowedIssuers: ["*"], // Nila onchain issuer
     type: credentialRequest.type,
-    context: "https://github.com/Blockchainforcommons/nila-id/blob/master/schemas/OriginCredentials/OriginCredential.jsonId",
+    context: 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/nila-js-node/schemas/OriginCredentials/OriginCredential.jsonId',
     credentialSubject: {
       ct: {},
     },

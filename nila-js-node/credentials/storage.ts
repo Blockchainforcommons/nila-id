@@ -18,7 +18,7 @@ function ifPaddy(did: core.DID, input: any){
   if (typeof input.conditions === 'undefined' || input.conditions !== 'raw' ){
     // set paddy as unprocessed (7 month expiration)
     date.setMonth(date.getMonth() + 7);
-    schema = 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/schemas/StoreCredentials/StorePaddyCredential.json',
+    schema = 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/nila-js-node/schemas/StoreCredentials/StorePaddyCredential.json',
     subject = {
       id: did,
       //aadhar: '', //input.Aadhar,
@@ -31,7 +31,7 @@ function ifPaddy(did: core.DID, input: any){
   else {
     // set paddy as processed, 2 year expiration
     date.setMonth(date.getMonth() + 24);
-    schema = 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/schemas/StoreCredentials/StorePaddyCredential.json',
+    schema = 'https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/nila-js-node/schemas/StoreCredentials/StorePaddyCredential.json',
     subject = {
       id: did,
       //aadhar: '', //input.Aadhar,
@@ -75,7 +75,7 @@ const proofReqMtp: ZeroKnowledgeProofRequest = {
   query: {
     allowedIssuers: [issuerDID],
     type: credentialRequest.type,
-    context: `https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/schemas/StoreCredentials/Store${Ct}Credential.jsonld`,
+    context: `https://raw.githubusercontent.com/Blockchainforcommons/nila-id/master/nila-js-node/schemas/StoreCredentials/Store${Ct}Credential.jsonld`,
     credentialSubject: {
       quantity: {},
     },
