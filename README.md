@@ -16,6 +16,20 @@ There are three main components in this application:
 
 Nila is registered as Aadhava Agri Services Private Limited
 
+### Limitations
+The Nila-id node comes with a number of limitations
+
+* The nila-js-sdk does NOT have a dedicated storage! It uses the browser related storages as used in JS-SDK, but nila-js-sdk is not a browser application. Therefore both issuer and user calls should happen within the same identity loadtime. 
+
+* As the Nila-sensing-network (formally chitta) is not available on Polygon, we are not able to create production-ready origin certificates.
+
+* It is impossible for now to verify multiple queries at once, this makes the UX very complex and cumbersome.
+
+* The JS-SDK Polygon ID documentation is incomplete and unclear. It uses different naming between examples, tutorials and documentation.
+
+* The UX provides a lot of QR codes to the user. It is likely he will get confused, in next version, the use of shorturls might be an improvement over qr images.
+
+
 ### Languages
 
 Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
@@ -145,16 +159,6 @@ Future versions of the Nila Account Abstraction will focus on eliminating these 
 Origin Credentials are not stored locally in this version of nila-id. Even though a credential schema has a expiration date. Credentials are generated for one-time proof. 
 
 Storage Credentials are not stored locally in this version of nila-id. Storage credentials will be stored on-chain in future versions, as branches in a storage merkle tree.
-
-## Limitations for prod stage
-
-* As the Nila-sensing-network (formally chitta) is not available on Polygon, we are not able to create production-ready origin certificates.
-
-* It is impossible for now to verify multiple queries at once, this makes the UX very complex and cumbersome.
-
-* The JS-SDK Polygon ID documentation is incomplete and unclear. It uses different naming between examples, tutorials and documentation. It does not explain each function.
-
-* The UX provides a lot of QR codes to the user. It is likely he will get confused, in next version, the use of shorturls might be an improvement over qr images.
 
 ## How to initialize the chatbot:
 1. Get an account at Twilio 
