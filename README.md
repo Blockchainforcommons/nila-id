@@ -19,7 +19,7 @@ Nila is registered as Aadhava Agri Services Private Limited
 ### Limitations
 The Nila-id node comes with a number of limitations
 
-* The nila-js-sdk has initiated a non-encrypted persistent storage using AWS dynamoDB. Some issues still persist in syncing wallet states. 
+* The BabyJubJub key is randomly generated, future versions will look at using the private key to securily generate and reinstantiate the BJJ key. This will save storing and fetching seed keys from the backend storage after each run.
 
 * As the Nila-sensing-network (formally chitta) is not available on Polygon, we are not able to create production-ready origin certificates.
 
@@ -34,9 +34,11 @@ The Nila-id node comes with a number of limitations
 
 Our users in general are not proficient in english. Our chatbot is created to allow any minor language to be hardcoded into the UI. for the nila-id experiment we only used english. Others versions of the chatbot are also responding in Tamil, Kannada, Telugu and Hindi.
 
-### Storage
+### Storage & KMS
 
 The nila-id-sdk instantiates the credentials and identity from a persistent database (DynamoDB) into the common in-memory database used by PolygonID.
+
+Unlike the polygonID JS-SDK, the Nila-id-sdk has *the ability to restore a privatekey of the issuer or user.* This allows off-chain credentials to be created and proof generated. Knowing its *'not web3'* limitations, the Nila team will move to minimalizing the middleware need and create certificates onchain using account abstraction.
 
 ## Requirements
 1. NodeJS => 18.x
