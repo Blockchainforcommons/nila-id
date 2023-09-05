@@ -255,7 +255,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       // load or create new wallets and storage
       const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
       const issuerDID = DID
-      /*
+      
       // prepare and issue credential
       const credentialRequest : any = createStorageCredential(userDID,input);
       const credential = await identityWallet.issueCredential(
@@ -291,7 +291,7 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
       console.log('txId',txId);
       // store the credentials, identity and tx id for the next time.
       await storePersist(phone,dataStorage,issuerDID.string(),txId)
-      */
+      
       // send credential to user to generate proof
       console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
       client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
