@@ -12,7 +12,7 @@
 test('test to issue an offchain storage credential and proof it is part of the storage merkle tree', () => {
     /**
      * emulate a issue certificate call, receive a 
-    
+
      */
     expect(1).toBe(1);
   });
