@@ -10,7 +10,6 @@ import {
   IDataStorage,
   Identity,
   IdentityStorage,
-  IdentityWallet,
   IIdentityWallet,
   InMemoryDataSource,
   InMemoryMerkleTreeStorage,
@@ -42,9 +41,11 @@ import {
   AgentResolver,
   FSCircuitStorage,
 } from "@0xpolygonid/js-sdk";
+import { IdentityWallet }  from "./identitywallet.js"
 import path from "path";
 import dotenv from "dotenv";
 dotenv.config();
+
 
 const rpcUrl = process.env.RPC_URL as string;
 const contractAddress = process.env.ORIGIN_CERTS_CONTRACT as string;
@@ -69,19 +70,6 @@ export function initDataStorage(): IDataStorage {
   return dataStorage;
 }
 
-export async function loadIdentityWallet(
-  dataStorage: IDataStorage,
-  credentialWallet: ICredentialWallet,
-  BJJ: KmsKeyType.BabyJubJub
-): Promise<IIdentityWallet> {
-  const memoryKeyStore = new InMemoryPrivateKeyStore();
-  const bjjProvider = new BjjProvider(KmsKeyType.BabyJubJub, memoryKeyStore);
-  const kms = new KMS();
-  kms.registerKeyProvider(KmsKeyType.BabyJubJub, bjjProvider);
-
-  return new IdentityWallet(kms, dataStorage, credentialWallet);
-}
-
 export async function initIdentityWallet(
   dataStorage: IDataStorage,
   credentialWallet: ICredentialWallet
@@ -91,7 +79,7 @@ export async function initIdentityWallet(
   const kms = new KMS();
   kms.registerKeyProvider(KmsKeyType.BabyJubJub, bjjProvider);
 
-  return new IdentityWallet(kms, dataStorage, credentialWallet);
+  return new IdentityWallet(kms, dataStorage, credentialWallet,memoryKeyStore);
 }
 
 export async function initInMemoryDataStorageAndWallets() {

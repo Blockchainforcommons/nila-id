@@ -7,10 +7,13 @@ import {
     EthStateStorage,
     ZeroKnowledgeProofRequest,
     CredentialStatusType,
-    IdentityWallet,
     IIdentityWallet,
     ProofService,
     KmsKeyType,
+    IssuerData,
+    KMS,
+    AbstractPrivateKeyStore,
+    BjjProvider,
   } from "@0xpolygonid/js-sdk";
 
 import { 
@@ -29,8 +32,8 @@ import {
     initDataStorage,
     initCredentialWallet,
     initIdentityWallet,
-    loadIdentityWallet,
   } from "./walletSetup";
+import { PrivateKey } from 'aws-sdk/clients/acm';
 
 const QR = require('qrcode')
 const fs = require('fs');
@@ -113,8 +116,10 @@ app.use(express.urlencoded({ extended: true })); // support encoded bodies
 app.use(express.static('schemas'))
 app.use(bodyParser.json());
 
-async function init(){
-  console.log('init, no user found')
+async function init(phone : string, SK: string){
+  console.log('first time issuer, create identity')
+  const gen_new_key = require("@0xpolygonid/js-sdk/dist/cjs/kms/provider-helpers");
+
   const circuitStorage = await initCircuitStorage();
   let { dataStorage, credentialWallet, identityWallet } = await initInMemoryDataStorageAndWallets();
     const proofService = await initProofService(
@@ -123,42 +128,96 @@ async function init(){
         dataStorage.states,
         circuitStorage
     );
-    
-    return {identityWallet,credentialWallet,proofService,dataStorage,circuitStorage}
-}
 
-async function instantiate(data : any){
-  console.log('instantiate, user found')
-  const dataStorage = initDataStorage()
-  const circuitStorage = await initCircuitStorage()
-  // restore data in storage
-  await dataStorage.credential.saveAllCredentials(JSON.parse(data.credentials.S))
-  await dataStorage.identity.saveIdentity(JSON.parse(data.identities.S))
-  // instantiate wallets
-  const credentialWallet = await initCredentialWallet(dataStorage)
-  const identityWallet = await loadIdentityWallet(dataStorage,credentialWallet,data.BabyJubJub.S)
-  const proofService = await initProofService(identityWallet,credentialWallet,dataStorage.states,circuitStorage)
-  return {identityWallet,credentialWallet,proofService,dataStorage,circuitStorage}
-}
+  // create new babyjubjub key
+  const key = (0, gen_new_key.getRandomBytes)(32)
 
-async function storePersist(phone : string,dataStorage : any,txId : string){
-  // store the updated issuer identity and state
+  // create new identity 
+  const options = {
+    method: core.DidMethod.PolygonId,
+    SK,
+    blockchain: core.Blockchain.Polygon,
+    networkId: core.NetworkId.Mumbai,
+    seed: key,
+    revocationOpts: {
+      type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+      id: 'https://rhs-staging.polygonid.me'
+    }
+  }
+  const { did: DID, credential: issuerAuthCredential } = await identityWallet.createIdentity(options); 
+  console.log('new user', DID, issuerAuthCredential) //c27d4f99b2c94404a48ea64ffce5bf3e
+
+  // custom implementation of seed generation from private key
+
+  // store new key in persistent storage
   var updateIdentity = {
     TableName: 'polygon_aes',
     Key: { 'phoneNumber': {'S': phone} },
-    UpdateExpression: 'set credentials= :c, identities = :ids, state = :st',
+    UpdateExpression: 'set BabyJubJub= :bj',
     ExpressionAttributeValues: {
-      ':c':  { 'S' : JSON.stringify(await dataStorage.credential.listCredentials())},
-      ':ids':  { 'S' : JSON.stringify(await dataStorage.identity.getAllIdentities())},
-      ':st':  { 'S' : txId},
+      ':bj':  { 'B' : key},
     },
     ReturnValues: "ALL_NEW",
   }
   await ddb.updateItem(updateIdentity).promise()
 
+  return {identityWallet,credentialWallet,proofService,dataStorage,DID,issuerAuthCredential}
+}
+
+async function instantiate(phone : string, SK: string, key: string){
+  // instantiate is similar to init except for the BJJ key generation.
+  console.log('instantiate, user found')
+  const gen_new_key = require("@0xpolygonid/js-sdk/dist/cjs/kms/provider-helpers");
+
+  const circuitStorage = await initCircuitStorage();
+  let { dataStorage, credentialWallet, identityWallet } = await initInMemoryDataStorageAndWallets();
+    const proofService = await initProofService(
+        identityWallet,
+        credentialWallet,
+        dataStorage.states,
+        circuitStorage
+    );
+
+  // recover babyjubjub key
+  let utf8Encode = new TextEncoder();
+  const seed: Uint8Array = utf8Encode.encode(key); 
+
+  // create new identity 
+  const options = {
+    method: core.DidMethod.PolygonId,
+    SK,
+    blockchain: core.Blockchain.Polygon,
+    networkId: core.NetworkId.Mumbai,
+    seed: seed,
+    revocationOpts: {
+      type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+      id: 'https://rhs-staging.polygonid.me'
+    }
+  }
+  const { did: DID, credential: issuerAuthCredential } = await identityWallet.createIdentity(options); 
+  return {identityWallet,credentialWallet,proofService,dataStorage,DID,issuerAuthCredential}
+}
+
+async function storePersist(phone : string,dataStorage : any,issuerDID: string, txId : string){
+  // store the updated issuer identity and state
+  var updateIdentity = {
+    TableName: 'polygon_aes',
+    Key: { 'phoneNumber': {'S': phone} },
+    UpdateExpression: 'set credentials= :c, identities = :ids, idstate = :st, did = :dd',
+    ExpressionAttributeValues: {
+      ':c':  { 'S' : JSON.stringify(await dataStorage.credential.listCredentials())},
+      ':ids':  { 'S' : JSON.stringify(await dataStorage.identity.getAllIdentities())},      
+      ':dd':  { 'S' : issuerDID},
+      ':st':  { 'S' : txId},
+
+    },
+    ReturnValues: "ALL_NEW",
+  }
+  await ddb.updateItem(updateIdentity).promise()
 }
 
 app.post('/IssueStorage', async (req: Request, res: Response) => {
+    const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
 
     // API CALLED IN WABA FLOW: handler.Store
     
@@ -172,282 +231,293 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     var params = {
       TableName: 'polygon_aes',
       Key: { 'phoneNumber': {'S': phone} },
-      ProjectionExpression: 'SK,BabyJubJub,BusinessName,credentials,identities'
+      ProjectionExpression: 'SK,BabyJubJub,BusinessName,did,credentials,identities'
     }
     var data = await ddb.getItem(params).promise()
     var data = data.Item
 
     console.log('data', data)
 
-    // see if the identity is available, load wallets and storage, otherwise initiate new
-    const { identityWallet, credentialWallet, proofService, dataStorage, circuitStorage } = data === undefined ? await init() : await instantiate(data)
-    
-    // create identity KMS with stored BJJ
-    let utf8Encode = new TextEncoder();
-    const seedPhraseIssuer: Uint8Array = data === undefined ? utf8Encode.encode('') : utf8Encode.encode(data.BabyJubJub.S)
-    console.log('seedPhraseIssuer', seedPhraseIssuer) 
-    const options = {
-      method: core.DidMethod.Iden3,
-      blockchain: core.Blockchain.Polygon,
-      networkId: core.NetworkId.Mumbai,
-      seed: seedPhraseIssuer,
-      revocationOpts: {
-        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-        id: 'https://rhs-staging.polygonid.me'
-      }
-    }
-    const {seed, ...withoutSeed} = options
-
-
-    const { did: issuerDID, credential: issuerAuthCredential } = await identityWallet.createIdentity(data === undefined ? withoutSeed : options); 
-    console.log('issuerDID',issuerDID)
-    
-    // prepare and issue credential
-    const credentialRequest : any = createStorageCredential(userDID,input);
-    console.log('credent', credentialRequest)
-    const credential = await identityWallet.issueCredential(
-        issuerDID,
-        credentialRequest
-    );
-    console.log('issdid', credential)
-
-    // cache credential
-    await dataStorage.credential.saveCredential(credential);
-
-    // storagecreds are MTVP, so have to be transited onchain
-    await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
-
-    // make sure to add credentials to claims merkle tree
-    const add = await identityWallet.addCredentialsToMerkleTree(
-      [credential],
-      issuerDID,
-    );
-
-    // publish state
-    const signer = new ethers.Wallet(
-      data.SK.S, 
-      (dataStorage.states as EthStateStorage).provider
-    );
-    
-    const txId = await proofService.transitState(
-      issuerDID,
-      add.oldTreeState,
-      true,
-      dataStorage.states,
-      signer
-    );
-    console.log(txId);
-
-    // update persistent storage with new identifiers and credentials
-    await storePersist(phone,dataStorage,txId)
-  
-    // send credential to user to generate proof
-    console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
-    const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
-    client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
+    // unknown issuer, return request to formal sign-up
+    if(data === undefined){
+      client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
       .executions
       .create({
         to: `whatsapp:${input.user_phone}`,
         from:"whatsapp:+13478481380",
         parameters: JSON.stringify({
-          'id': '300',
-          'ct': input.ct,
-          'quantity': input.store_amount,
-          'grade': input.store_grade,
-          'businessName': data.BusinessName.S,
-          'credentialRequest': JSON.stringify(credentialRequest), //credentialRequest, 
-          'credential': JSON.stringify(credential),
-          'idW': JSON.stringify(add),
-          //'txID': txId,
-          'issuerDID': issuerDID.string(),
+          'message': 'Please register first. Go to asknila.in and sign-up as a storage facility issuer.'
       })})
-      .then((execution: any) => console.log(execution.sid));
+      return res.send('success')
+    }
+    // known issuer, load or init identity if wallet has been created.
+    else if (typeof data.SK !== 'undefined') {
+      // load or create new wallets and storage
+      const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
+      const issuerDID = DID
+      /*
+      // prepare and issue credential
+      const credentialRequest : any = createStorageCredential(userDID,input);
+      const credential = await identityWallet.issueCredential(
+          issuerDID,
+          credentialRequest
+      );
 
-    // return success
-    return res.send('success')
+      // cache credential
+      await dataStorage.credential.saveCredential(credential);
 
+      // storagecreds are MTVP, so have to be transited onchain
+      await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
+
+      // make sure to add credentials to claims merkle tree
+      const add = await identityWallet.addCredentialsToMerkleTree(
+        [credential],
+        issuerDID,
+      );
+
+      // publish state
+      const signer = new ethers.Wallet(
+        data.SK.S, 
+        (dataStorage.states as EthStateStorage).provider
+      );
+      
+      const txId = await proofService.transitState(
+        issuerDID,
+        add.oldTreeState,
+        true,
+        dataStorage.states,
+        signer
+      );
+      console.log('txId',txId);
+      // store the credentials, identity and tx id for the next time.
+      await storePersist(phone,dataStorage,issuerDID.string(),txId)
+      */
+      // send credential to user to generate proof
+      console.log('TWILIO',process.env.ACCOUNT_SID, process.env.AUTH_TOKEN)
+      client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
+        .executions
+        .create({
+          to: `whatsapp:${input.user_phone}`,
+          from:"whatsapp:+13478481380",
+          parameters: JSON.stringify({
+            'id': '300',
+            'ct': input.ct,
+            'quantity': input.store_amount,
+            'grade': input.store_grade,
+            'businessName': data.BusinessName.S,
+            'credentialRequest': JSON.stringify('credentialRequest'), //credentialRequest, 
+            'credential': JSON.stringify('credential'),
+            'idW': JSON.stringify('add'),
+            'txID': 'txId',
+            'issuerDID': issuerDID.string(),
+        })})
+        .then((execution: any) => console.log(execution.sid));
+    }        
+  res.send('success!!!')
 });
 
 app.post('/ProofStorage', async (req: Request, res: Response) => {
 
     // API CALLED IN WABA FLOW: handler.Proof
-  
-    // receive input (device id, credentialRequest, userDID)
+    const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
+    
+    // parse req
     const input = req.body
+    console.log(input)
     const phone = input.phone.split(':')[1]
     const aadhar = input.aadhar
     const issuerDID = input.issuerDID // postman: string, WA: core.did
     const credentialRequest = JSON.parse(input.credentialRequest)
     const credential = JSON.parse(input.credential)
     const txID = input.txID
-    const IdWallet_with_claims = JSON.parse(input.idW)
-  
+ 
     // recover wallet seed (DEMO: Users have not been transferred to Polygon )
     var params = {
       TableName: 'polygon_aes',
       Key: { 'phoneNumber': {'S': phone} },
-      ProjectionExpression: 'SK,BabyJubJub'
+      ProjectionExpression: 'SK,BabyJubJub,BusinessName,did,credentials,identities'
     }
     var data = await ddb.getItem(params).promise()
     var data = data.Item
-    // see if the identity is available, load wallets and storage, otherwise initiate new
-    const { identityWallet, credentialWallet, proofService, dataStorage, circuitStorage } = Object.keys(data).length > 0 ? await instantiate(data) : await init()
+
+    console.log('data', data)
+  
+    // unknown user, return request to formal field registration
+    if(data === undefined){
+      client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
+      .executions
+      .create({
+        to: `whatsapp:${input.user_phone}`,
+        from:"whatsapp:+13478481380",
+        parameters: JSON.stringify({
+          'message': 'Ues something has gone wrong. Please try again or contact the Nila manager in your region.'
+      })})
+      return res.send('success')
+    }
+    // known issuer, load or init identity if wallet has been created.
+    else if (typeof data.SK !== 'undefined') {
+      // load or create new wallets and storage
+      const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
+      const userDID = DID
+
+      // the new credential hasnt been stored yet, make sure it does.
+      await dataStorage.credential.saveCredential(credential);
+
+      // get request for MERKLE TREE proof
+      const proofReqMtp: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
+      console.log('proofReqMtp', proofReqMtp)
+
+      // generate proof
+      const { proof: proofMTP } = await proofService.generateProof(proofReqMtp,userDID);
+
+      console.log('proof', proofMTP)
+
+      const proof_pub_json = JSON.stringify({
+          'proof': proofMTP,
+      })
+      console.log('proof_pub_json', proof_pub_json)
+
+      // link that let verifiers know: 
+      //  - issuer
+      //  - query and criteria
+
+      // create the qr codes and return
+      var addr = process.env.URI
+      var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
+      await QR.toFile('qr.png',zkProof)
+
+      // store image on S3 bucket
+      var filename = 'qr.png';
+      await s3.upload({
+        Bucket: process.env.S3BUCKET, 
+        Key: filename, 
+        Body: fs.readFileSync('qr.png'),
+        ACL: 'public-read',
+        ContentType: 'image/png',
+      }).promise()
+
+      // update persistent storage with new identifiers and credentials
+      await storePersist(phone,dataStorage,userDID.string(),txID)
+
+      // return url of QR image
+      res.send(`https://${process.env.S3BUCKET}.s3.ap-south-1.amazonaws.com/${filename}`)
+  }
+});
+
+app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
+
+  // API CALLED IN WABA FLOW: SUPPLY.py
+  const client = require('twilio')(process.env.ACCOUNT_SID, process.env.AUTH_TOKEN);
+  
+  // parse req
+  const input = req.body
+  console.log(input)
+  const phone = input.phone.split(':')[1]
+
+  // recover wallet seed (DEMO: Users have not been transferred to Polygon )
+  var params = {
+    TableName: 'polygon_aes',
+    Key: { 'phoneNumber': {'S': phone} },
+    ProjectionExpression: 'SK,BabyJubJub,BusinessName,did,credentials,identities'
+  }
+  var data = await ddb.getItem(params).promise()
+  var data = data.Item
+
+  console.log('data', data)
+
+  // unknown issuer, return request to formal sign-up
+  if(data === undefined){
+    client.studio.v2.flows('FW1327ad94088d2b26f52988905062b4c6')
+    .executions
+    .create({
+      to: `whatsapp:${input.user_phone}`,
+      from:"whatsapp:+13478481380",
+      parameters: JSON.stringify({
+        'message': 'Ues something has gone wrong. Please try again or contact the Nila manager in your region.'
+    })})
+    return res.send('success')
+  }
+  // known issuer, load or init identity if wallet has been created.
+  else if (typeof data.SK !== 'undefined') {
+    // load or create new wallets and storage
+    const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
+    const userDID = DID
     
-
-    let utf8Encode = new TextEncoder();
-    const seedPhraseUser: Uint8Array = utf8Encode.encode(data.Item.BabyJubJub.S);  
-
+    /*
     const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
         method: core.DidMethod.Iden3,
         blockchain: core.Blockchain.Polygon,
         networkId: core.NetworkId.Mumbai,
         seed: seedPhraseUser,
         revocationOpts: {
-        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-        id: 'https://rhs-staging.polygonid.me'
+          type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+          id: 'https://rhs-staging.polygonid.me'
         }
     });
+    */
 
-    // create standardized proofrequests
+    // find recent token deposits on user address from token minter
+    const blocknmb = await provider.core.getBlockNumber()
+    console.log('blocknmb', blocknmb)
+    const histblock = blocknmb - ((60*60*24*21) / 12.06) // doesnt have to be precise, current block minus estimated blocks by blocktime
 
-    // storagecreds are MTVP, so have to be transited onchain
-    await identityWallet.publishStateToRHS(issuerDID, rhsUrl);
+    const txs = await provider.core.getAssetTransfers({
+      fromBlock: '0x' + Math.round(histblock).toString(16).toUpperCase(), // find block of about 3 weeks ago.
+      fromAddress: process.env.FIELD_ACTIVITY_MINT_CONTRACT,
+      toAddress: data.SK.S,
+      excludeZeroValue: false,
+      category: ["erc20"],
+    });
 
-    // get request for MERKLE TREE proof
-    const proofReqMtp: ZeroKnowledgeProofRequest = createStorageCredentialRequest(credentialRequest,input.ct,issuerDID);
-    console.log('proofReqMtp', proofReqMtp)
+  // check for recent tx from our crop token mint contact ( not sufficient - can also be seperate cultivations!!)
+    if (txs.transfers.length == 0){
+      // find metadata to create origin credentialRequest
+      // chitta sensing network is not available on Polygon yet.
+      let md = {
+        ct: 'paddy',
+        hrvst: '08/11/2023',
+        yield: 15,
+        lat: 12.543117,
+        lng: 79.326588,
+        size: 3,
+        fields: 6,
+        other: null
+      } // dummy metadata
 
-    // generate proof
-    const { proof: proofMTP } = await proofService.generateProof(proofReqMtp,userDID);
+      // propose contract to issue credentialRequest
+      const credentialRequest : any = createOriginCredential(userDID,input,md);
 
-    console.log('proof', proofMTP)
+      console.log('credentialRequest', credentialRequest)
 
-    const proof_pub_json = JSON.stringify({
-        'proof': proofMTP,
-    })
-    console.log('proof_pub_json', proof_pub_json)
+      // generate proof
+      const { proof, pub_signals } = await proofService.generateProof(credentialRequest,userDID);
 
-    // link that let verifiers know: 
-    //  - issuer
-    //  - query and criteria
+      console.log('proof', proof)
+      console.log('pub_signals', pub_signals)
 
-    // create the qr codes and return
-    var addr = process.env.URI
-    var zkProof = `${addr}/verify?text=${aadhar}${proof_pub_json}` 
-    await QR.toFile('qr.png',zkProof)
+      const proof_pub_json = JSON.stringify({
+          'proof': proof,
+          'pubsignals': pub_signals,
+      })
+      console.log('proof_pub_json', proof_pub_json)
 
-    // store image on S3 bucket
-    var filename = 'qr.png';
-    await s3.upload({
-      Bucket: process.env.S3BUCKET, 
-      Key: filename, 
-      Body: fs.readFileSync('qr.png'),
-      ACL: 'public-read',
-      ContentType: 'image/png',
-    }).promise()
-
-    // update persistent storage with new identifiers and credentials
-    await storePersist(phone,dataStorage,txID)
-
-    // return url of QR image
-    res.send(`https://${process.env.S3BUCKET}.s3.ap-south-1.amazonaws.com/${filename}`)
-});
-
-app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
-
-  // API CALLED IN WABA FLOW: SUPPLY.py
-  let input = req.body
-  let pk = input.pk
-  let phone = input.phone.split(':')[1]
-  console.log('user phone', phone)
-
-  // initialize wallets
-  let { identityWallet, credentialWallet, dataStorage, proofService, circuitStorage} = await init()
-
-  // recover wallet seed (DEMO: Users have not been transferred to Polygon )
-  var params = {
-    TableName: 'polygon_aes',
-    Key: { 'phoneNumber': {'S': phone} },
-    ProjectionExpression: 'SK,BabyJubJub'
-  }
-  var wallet_seed = await ddb.getItem(params).promise()
-
-  // recover wallet seed (DEMO: Users have not been transferred to Polygon )
-  let utf8Encode = new TextEncoder();
-  const seedPhraseUser: Uint8Array = utf8Encode.encode(wallet_seed.Item.BabyJubJub.S);  
-
-  const { did: userDID, credential: authBJJCredentialUser } = await identityWallet.createIdentity({
-      method: core.DidMethod.Iden3,
-      blockchain: core.Blockchain.Polygon,
-      networkId: core.NetworkId.Mumbai,
-      seed: seedPhraseUser,
-      revocationOpts: {
-        type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
-        id: 'https://rhs-staging.polygonid.me'
-      }
-  });
-
-  // find recent token deposits on user address from token minter
-  const blocknmb = await provider.core.getBlockNumber()
-  console.log('blocknmb', blocknmb)
-  const histblock = blocknmb - ((60*60*24*21) / 12.06) // doesnt have to be precise, current block minus estimated blocks by blocktime
-
-  const txs = await provider.core.getAssetTransfers({
-    fromBlock: '0x' + Math.round(histblock).toString(16).toUpperCase(), // find block of about 3 weeks ago.
-    fromAddress: process.env.FIELD_ACTIVITY_MINT_CONTRACT,
-    toAddress: pk,
-    excludeZeroValue: false,
-    category: ["erc20"],
-  });
-
- // check for recent tx from our crop token mint contact ( not sufficient - can also be seperate cultivations!!)
-  if (txs.transfers.length == 0){
-    // find metadata to create origin credentialRequest
-    // chitta sensing network is not available on Polygon yet.
-    let md = {
-      ct: 'paddy',
-      hrvst: '08/11/2023',
-      yield: 15,
-      lat: 12.543117,
-      lng: 79.326588,
-      size: 3,
-      fields: 6,
-      other: null
-    } // dummy metadata
-
-    // propose contract to issue credentialRequest
-    const credentialRequest : any = createOriginCredential(userDID,input,md);
-
-    console.log('credentialRequest', credentialRequest)
-
-    // generate proof
-    const { proof, pub_signals } = await proofService.generateProof(credentialRequest,userDID);
-
-    console.log('proof', proof)
-    console.log('pub_signals', pub_signals)
-
-    const proof_pub_json = JSON.stringify({
-        'proof': proof,
-        'pubsignals': pub_signals,
-    })
-    console.log('proof_pub_json', proof_pub_json)
-
-    // return origin proof QR and storage request QR
-  }
- else {
-    // queue request for field analysis to the chitta remote sensing node
-    var lambda_params = {
-      FunctionName: 'arn:aws:lambda:ap-south-1:867185477215:function:Chitta-Sensing-stage-GETLABEL', // the lambda function we are going to invoke
-      InvocationType: 'RequestResponse',
-      LogType: 'Tail',
-      Payload: JSON.stringify({
-        'phone': input['phone'].split(':')[1], 
-        'pk': pk,
-        }),
-    };
-    lambda.invoke(lambda_params).promise()
-    // return flow to wait for the sensing node to finish (unclear how long, depends on queue)
-    return res.send({ 'res': 0 })
+      // return origin proof QR and storage request QR
+    }
+  else {
+      // queue request for field analysis to the chitta remote sensing node
+      var lambda_params = {
+        FunctionName: 'arn:aws:lambda:ap-south-1:867185477215:function:Chitta-Sensing-stage-GETLABEL', // the lambda function we are going to invoke
+        InvocationType: 'RequestResponse',
+        LogType: 'Tail',
+        Payload: JSON.stringify({
+          'phone': input['phone'].split(':')[1], 
+          'pk': data.SK.S,
+          }),
+      };
+      lambda.invoke(lambda_params).promise()
+      // return flow to wait for the sensing node to finish (unclear how long, depends on queue)
+      return res.send({ 'res': 0 })
+    }
   }
 });
   
