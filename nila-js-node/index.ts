@@ -7,7 +7,6 @@ import {
     EthStateStorage,
     ZeroKnowledgeProofRequest,
     CredentialStatusType,
-    IIdentityWallet,
     ProofService,
     KmsKeyType,
     IssuerData,
@@ -33,7 +32,6 @@ import {
     initCredentialWallet,
     initIdentityWallet,
   } from "./walletSetup";
-import { PrivateKey } from 'aws-sdk/clients/acm';
 
 const QR = require('qrcode')
 const fs = require('fs');
@@ -153,9 +151,10 @@ async function init(phone : string, SK: string){
   var updateIdentity = {
     TableName: 'polygon_aes',
     Key: { 'phoneNumber': {'S': phone} },
-    UpdateExpression: 'set BabyJubJub= :bj',
+    UpdateExpression: 'set BabyJubJub= :bj, DID= :did',
     ExpressionAttributeValues: {
       ':bj':  { 'B' : key},
+      ':did':  { 'S' : DID.string()},
     },
     ReturnValues: "ALL_NEW",
   }
@@ -164,9 +163,10 @@ async function init(phone : string, SK: string){
   return {identityWallet,credentialWallet,proofService,dataStorage,DID,issuerAuthCredential}
 }
 
-async function instantiate(phone : string, SK: string, key: string){
+async function instantiate(phone : string, data: any){
   // instantiate is similar to init except for the BJJ key generation.
   console.log('instantiate, user found')
+  const SK = data.SK.S
   const gen_new_key = require("@0xpolygonid/js-sdk/dist/cjs/kms/provider-helpers");
 
   const circuitStorage = await initCircuitStorage();
@@ -178,23 +178,29 @@ async function instantiate(phone : string, SK: string, key: string){
         circuitStorage
     );
 
-  // recover babyjubjub key
-  let utf8Encode = new TextEncoder();
-  const seed: Uint8Array = utf8Encode.encode(key); 
-
   // create new identity 
   const options = {
+    did: data.did.S,
     method: core.DidMethod.PolygonId,
     SK,
     blockchain: core.Blockchain.Polygon,
     networkId: core.NetworkId.Mumbai,
-    seed: seed,
     revocationOpts: {
       type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
       id: 'https://rhs-staging.polygonid.me'
     }
   }
-  const { did: DID, credential: issuerAuthCredential } = await identityWallet.createIdentity(options); 
+  
+  // reload identity 
+  dataStorage.identity.saveIdentity(JSON.parse(data.identities.S)[0])
+  // reload credentials in wallet
+  credentialWallet.saveAll(JSON.parse(data.credentials.S))
+  // set key in keystore
+  const { credential: issuerAuthCredential } =  await identityWallet.resetIdentity(options)
+  const DID = data.did.S
+
+
+  //const { did: DID, credential: issuerAuthCredential } = await identityWallet.createIdentity(options); 
   return {identityWallet,credentialWallet,proofService,dataStorage,DID,issuerAuthCredential}
 }
 
@@ -253,16 +259,17 @@ app.post('/IssueStorage', async (req: Request, res: Response) => {
     // known issuer, load or init identity if wallet has been created.
     else if (typeof data.SK !== 'undefined') {
       // load or create new wallets and storage
-      const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
-      const issuerDID = DID
+      const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data)
+      const issuerDID = core.DID.parse(DID)
       
+      console.log('did of issuer', issuerDID)
       // prepare and issue credential
       const credentialRequest : any = createStorageCredential(userDID,input);
       const credential = await identityWallet.issueCredential(
           issuerDID,
           credentialRequest
       );
-
+      
       // cache credential
       await dataStorage.credential.saveCredential(credential);
 
@@ -357,7 +364,7 @@ app.post('/ProofStorage', async (req: Request, res: Response) => {
     // known issuer, load or init identity if wallet has been created.
     else if (typeof data.SK !== 'undefined') {
       // load or create new wallets and storage
-      const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
+      const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data)
       const userDID = DID
 
       // the new credential hasnt been stored yet, make sure it does.
@@ -440,7 +447,7 @@ app.post('/IssueProofOrigin', async (req: Request, res: Response) => {
   // known issuer, load or init identity if wallet has been created.
   else if (typeof data.SK !== 'undefined') {
     // load or create new wallets and storage
-    const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data.SK.S,data.BabyJubJub.S)
+    const { identityWallet, credentialWallet, proofService, dataStorage,DID,issuerAuthCredential } = typeof data.BabyJubJub === 'undefined' ? await init(phone,data.SK.S) : await instantiate(phone,data)
     const userDID = DID
     
     /*

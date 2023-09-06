@@ -10,7 +10,6 @@ import {
   IDataStorage,
   Identity,
   IdentityStorage,
-  IIdentityWallet,
   InMemoryDataSource,
   InMemoryMerkleTreeStorage,
   InMemoryPrivateKeyStore,
@@ -42,6 +41,7 @@ import {
   FSCircuitStorage,
 } from "@0xpolygonid/js-sdk";
 import { IdentityWallet }  from "./identitywallet.js"
+import type { IIdentityWallet }  from "./identitywallet.d.ts"
 import path from "path";
 import dotenv from "dotenv";
 dotenv.config();

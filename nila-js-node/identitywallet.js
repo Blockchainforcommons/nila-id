@@ -72,6 +72,33 @@ class IdentityWallet {
     /**
      * {@inheritDoc IIdentityWallet.createIdentity}
      */
+
+    async resetIdentity(opts) {
+        const SK = opts.SK
+        const privateKey = new js_crypto_1.PrivateKey(js_crypto_1.Hex.decodeString(SK)) 
+        console.log('privkey', privateKey)
+        const publicKey = privateKey.public();
+        console.log('pubkey', publicKey)
+        const keyId = {
+            type: KmsKeyType.BabyJubJub,
+            id: gen_new_key.keyPath(KmsKeyType.BabyJubJub, publicKey.hex())
+        };
+        console.log('keyId', keyId)
+        await this.keyStore.importKey({ alias: keyId.id, key: privateKey.hex() });
+
+        const pubKeyHex = await this._kms.publicKey(keyId);
+        const pubKey = js_crypto_1.PublicKey.newFromHex(pubKeyHex);
+        const issuerCredential = await this._storage.credential.findCredentialsByQuery({
+            context: verifiable_1.VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSONLD_URL,
+            type: verifiable_1.VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_TYPE,
+            allowedIssuers: [opts.did]
+        });
+        console.log('resetidenty', issuerCredential)
+        return {
+            issuerCredential
+        };
+
+    }
     async createIdentity(opts) {
         const tmpIdentifier = opts.seed
             ? uuid.v5(new cross_sha256_1.sha256js().update(opts.seed).digest('hex'), uuid.NIL)
@@ -315,12 +342,15 @@ class IdentityWallet {
                 : Math.round(Math.random() * 10000);
         req.subjectPosition = req.subjectPosition ?? verifiable_1.SubjectPosition.Index;
         try {
+            console.log('err create iden3cred', issuerDID, req, jsonSchema)
             credential = this._credentialWallet.createCredential(issuerDID, req, jsonSchema);
         }
         catch (e) {
+            console.log('e', e)
             throw new Error('Error create Iden3Credential');
         }
         const issuerAuthBJJCredential = await this._credentialWallet.getAuthBJJCredential(issuerDID);
+
         const coreClaimOpts = {
             revNonce: req.revocationOpts.nonce,
             subjectPosition: req.subjectPosition,
@@ -336,26 +366,19 @@ class IdentityWallet {
         catch (e) {
             throw new Error(`can't load json-ld schema ${jsonSchema.$metadata.uris.jsonLdContext}`);
         }        
-        console.log('1')
 
         const schemaBytes = utils_1.byteEncoder.encode(JSON.stringify(jsonSchema));
         const credentialType = await js_jsonld_merklization_1.Path.getTypeIDFromContext(JSON.stringify(jsonLDCtx), req.type, opts);
-        console.log('2')
 
         const coreClaim = await new schema_processor_1.Parser().parseClaim(credential, credentialType, schemaBytes, coreClaimOpts);
         const { hi, hv } = coreClaim.hiHv();
-        console.log('3')
 
         const coreClaimHash = js_crypto_1.poseidon.hash([hi, hv]);
         const keyKMSId = this.getKMSIdByAuthCredential(issuerAuthBJJCredential);
-        console.log('keyKMSId', keyKMSId)
-        console.log('4')
-        console.log(this._kms)
         const signature = await this._kms.sign(keyKMSId, js_iden3_core_1.BytesHelper.intToBytes(coreClaimHash));
         if (!issuerAuthBJJCredential.proof) {
             throw new Error('issuer auth credential must have proof');
         }      
-        console.log('5')
         const mtpAuthBJJProof = issuerAuthBJJCredential.proof[0];
         const sigProof = new verifiable_1.BJJSignatureProof2021({
             type: verifiable_1.ProofType.BJJSignature,
